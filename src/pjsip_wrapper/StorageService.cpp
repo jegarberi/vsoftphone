@@ -67,6 +67,7 @@ bool StorageService::createTables() {
                         "proxy TEXT,"
                         "username TEXT,"
                         "domain TEXT,"
+                        "login TEXT,"
                         "password TEXT,"
                         "displayName TEXT,"
                         "transport TEXT,"
@@ -84,6 +85,7 @@ bool StorageService::createTables() {
   // Migration for existing databases
   query.exec(
       "ALTER TABLE accounts ADD COLUMN allowIpRewrite BOOLEAN DEFAULT 0");
+  query.exec("ALTER TABLE accounts ADD COLUMN login TEXT");
 
   if (!success) {
     qCritical() << "Error creating tables:" << query.lastError().text();
@@ -179,17 +181,19 @@ void StorageService::addMessage(const QString &remoteParty,
 
 void StorageService::addAccount(const AccountRecord &acc) {
   QSqlQuery query;
-  query.prepare("INSERT INTO accounts (accountName, server, proxy, username, "
-                "domain, password, displayName, transport, registerRefresh, "
-                "publishPresence, iceEnabled, stunServer, turnServer, "
-                "turnUser, turnPass, srtpMode, allowIpRewrite, active) VALUES "
-                "(:an, :sv, :px, :un, :dn, :pw, :dn_name, :tr, :rr, :pp, :ie, "
-                ":ss, :ts, :tu, :tp, :sm, :ar, :ac)");
+  query.prepare(
+      "INSERT INTO accounts (accountName, server, proxy, username, "
+      "domain, login, password, displayName, transport, registerRefresh, "
+      "publishPresence, iceEnabled, stunServer, turnServer, "
+      "turnUser, turnPass, srtpMode, allowIpRewrite, active) VALUES "
+      "(:an, :sv, :px, :un, :dn, :ln, :pw, :dn_name, :tr, :rr, :pp, :ie, "
+      ":ss, :ts, :tu, :tp, :sm, :ar, :ac)");
   query.bindValue(":an", acc.accountName);
   query.bindValue(":sv", acc.server);
   query.bindValue(":px", acc.proxy);
   query.bindValue(":un", acc.username);
   query.bindValue(":dn", acc.domain);
+  query.bindValue(":ln", acc.login);
   query.bindValue(":pw", acc.password);
   query.bindValue(":dn_name", acc.displayName);
   query.bindValue(":tr", acc.transport);
@@ -201,6 +205,7 @@ void StorageService::addAccount(const AccountRecord &acc) {
   query.bindValue(":tu", acc.turnUser);
   query.bindValue(":tp", acc.turnPass);
   query.bindValue(":sm", acc.srtpMode);
+  query.bindValue(":ar", acc.allowIpRewrite);
   query.bindValue(":ac", acc.active);
 
   if (!query.exec()) {
@@ -211,7 +216,8 @@ void StorageService::addAccount(const AccountRecord &acc) {
 void StorageService::updateAccount(const AccountRecord &acc) {
   QSqlQuery query;
   query.prepare("UPDATE accounts SET accountName=:an, server=:sv, proxy=:px, "
-                "username=:un, domain=:dn, password=:pw, displayName=:dn_name, "
+                "username=:un, domain=:dn, login=:ln, password=:pw, "
+                "displayName=:dn_name, "
                 "transport=:tr, registerRefresh=:rr, publishPresence=:pp, "
                 "iceEnabled=:ie, stunServer=:ss, turnServer=:ts, turnUser=:tu, "
                 "turnPass=:tp, srtpMode=:sm, allowIpRewrite=:ar, active=:ac "
@@ -221,6 +227,7 @@ void StorageService::updateAccount(const AccountRecord &acc) {
   query.bindValue(":px", acc.proxy);
   query.bindValue(":un", acc.username);
   query.bindValue(":dn", acc.domain);
+  query.bindValue(":ln", acc.login);
   query.bindValue(":pw", acc.password);
   query.bindValue(":dn_name", acc.displayName);
   query.bindValue(":tr", acc.transport);
@@ -232,6 +239,7 @@ void StorageService::updateAccount(const AccountRecord &acc) {
   query.bindValue(":tu", acc.turnUser);
   query.bindValue(":tp", acc.turnPass);
   query.bindValue(":sm", acc.srtpMode);
+  query.bindValue(":ar", acc.allowIpRewrite);
   query.bindValue(":ac", acc.active);
   query.bindValue(":id", acc.id);
 
@@ -252,7 +260,7 @@ void StorageService::removeAccount(int id) {
 QList<AccountRecord> StorageService::getAccounts() {
   QList<AccountRecord> list;
   QSqlQuery query(
-      "SELECT id, accountName, server, proxy, username, domain, "
+      "SELECT id, accountName, server, proxy, username, domain, login, "
       "password, displayName, transport, registerRefresh, "
       "publishPresence, iceEnabled, stunServer, turnServer, "
       "turnUser, turnPass, srtpMode, allowIpRewrite, active FROM accounts");
@@ -264,19 +272,20 @@ QList<AccountRecord> StorageService::getAccounts() {
     rec.proxy = query.value(3).toString();
     rec.username = query.value(4).toString();
     rec.domain = query.value(5).toString();
-    rec.password = query.value(6).toString();
-    rec.displayName = query.value(7).toString();
-    rec.transport = query.value(8).toString();
-    rec.registerRefresh = query.value(9).toInt();
-    rec.publishPresence = query.value(10).toBool();
-    rec.iceEnabled = query.value(11).toBool();
-    rec.stunServer = query.value(12).toString();
-    rec.turnServer = query.value(13).toString();
-    rec.turnUser = query.value(14).toString();
-    rec.turnPass = query.value(15).toString();
-    rec.srtpMode = query.value(16).toInt();
-    rec.allowIpRewrite = query.value(17).toBool();
-    rec.active = query.value(18).toBool();
+    rec.login = query.value(6).toString();
+    rec.password = query.value(7).toString();
+    rec.displayName = query.value(8).toString();
+    rec.transport = query.value(9).toString();
+    rec.registerRefresh = query.value(10).toInt();
+    rec.publishPresence = query.value(11).toBool();
+    rec.iceEnabled = query.value(12).toBool();
+    rec.stunServer = query.value(13).toString();
+    rec.turnServer = query.value(14).toString();
+    rec.turnUser = query.value(15).toString();
+    rec.turnPass = query.value(16).toString();
+    rec.srtpMode = query.value(17).toInt();
+    rec.allowIpRewrite = query.value(18).toBool();
+    rec.active = query.value(19).toBool();
     list.append(rec);
   }
   return list;

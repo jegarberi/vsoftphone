@@ -23,6 +23,7 @@ struct AccountRecord {
   QString proxy;
   QString username;
   QString domain;
+  QString login;
   QString password;
   QString displayName;
   QString transport; // UDP, TCP, TLS

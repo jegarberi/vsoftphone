@@ -11,7 +11,7 @@ AccountModel::AccountModel(QObject *parent) : QAbstractListModel(parent) {
                        rec.proxy,
                        rec.username,
                        rec.domain,
-                       rec.username,
+                       rec.login,
                        rec.password,
                        rec.displayName,
                        rec.transport,
@@ -23,7 +23,7 @@ AccountModel::AccountModel(QObject *parent) : QAbstractListModel(parent) {
                        rec.turnUser,
                        rec.turnPass,
                        rec.srtpMode,
-                       true,
+                       rec.allowIpRewrite,
                        rec.active});
   }
 }
@@ -118,6 +118,7 @@ void AccountModel::addAccount(const QVariantMap &data) {
   rec.proxy = data["proxy"].toString();
   rec.username = data["username"].toString();
   rec.domain = data["domain"].toString();
+  rec.login = data["login"].toString();
   rec.password = data["password"].toString();
   rec.displayName = data["displayName"].toString();
   rec.transport = data["transport"].toString();
@@ -129,6 +130,7 @@ void AccountModel::addAccount(const QVariantMap &data) {
   rec.turnUser = data["turnUser"].toString();
   rec.turnPass = data["turnPass"].toString();
   rec.srtpMode = data["srtpMode"].toInt();
+  rec.allowIpRewrite = data["allowIpRewrite"].toBool();
   rec.active = true;
 
   StorageService::instance().addAccount(rec);
@@ -144,7 +146,7 @@ void AccountModel::addAccount(const QVariantMap &data) {
                        r.proxy,
                        r.username,
                        r.domain,
-                       r.username,
+                       r.login,
                        r.password,
                        r.displayName,
                        r.transport,
@@ -156,7 +158,7 @@ void AccountModel::addAccount(const QVariantMap &data) {
                        r.turnUser,
                        r.turnPass,
                        r.srtpMode,
-                       true,
+                       r.allowIpRewrite,
                        r.active});
   }
   endResetModel();
@@ -176,6 +178,7 @@ void AccountModel::updateAccount(int index, const QVariantMap &data) {
   account.proxy = data["proxy"].toString();
   account.username = data["username"].toString();
   account.domain = data["domain"].toString();
+  account.login = data["login"].toString();
   account.password = data["password"].toString();
   account.displayName = data["displayName"].toString();
   account.transport = data["transport"].toString();
@@ -187,6 +190,7 @@ void AccountModel::updateAccount(int index, const QVariantMap &data) {
   account.turnUser = data["turnUser"].toString();
   account.turnPass = data["turnPass"].toString();
   account.srtpMode = data["srtpMode"].toInt();
+  account.allowIpRewrite = data["allowIpRewrite"].toBool();
 
   // Update DB
   AccountRecord rec;
@@ -196,6 +200,7 @@ void AccountModel::updateAccount(int index, const QVariantMap &data) {
   rec.proxy = account.proxy;
   rec.username = account.username;
   rec.domain = account.domain;
+  rec.login = account.login;
   rec.password = account.password;
   rec.displayName = account.displayName;
   rec.transport = account.transport;
@@ -207,6 +212,7 @@ void AccountModel::updateAccount(int index, const QVariantMap &data) {
   rec.turnUser = account.turnUser;
   rec.turnPass = account.turnPass;
   rec.srtpMode = account.srtpMode;
+  rec.allowIpRewrite = account.allowIpRewrite;
   rec.active = account.active;
   StorageService::instance().updateAccount(rec);
 
@@ -251,6 +257,7 @@ void AccountModel::toggleActive(int index) {
   rec.proxy = acc.proxy;
   rec.username = acc.username;
   rec.domain = acc.domain;
+  rec.login = acc.login;
   rec.password = acc.password;
   rec.displayName = acc.displayName;
   rec.transport = acc.transport;
@@ -262,6 +269,7 @@ void AccountModel::toggleActive(int index) {
   rec.turnUser = acc.turnUser;
   rec.turnPass = acc.turnPass;
   rec.srtpMode = acc.srtpMode;
+  rec.allowIpRewrite = acc.allowIpRewrite;
   rec.active = acc.active;
   StorageService::instance().updateAccount(rec);
 

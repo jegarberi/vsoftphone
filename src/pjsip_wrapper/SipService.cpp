@@ -161,11 +161,17 @@ void SipService::registerAccount(const QString &id, const QVariantMap &config) {
       cfg.sipConfig.proxies.push_back("sip:" + proxy.toStdString());
     }
 
+    QString login = config["login"].toString();
+    if (login.isEmpty())
+      login = username;
+
     cfg.sipConfig.authCreds.push_back(AuthCredInfo(
-        "digest", "*", username.toStdString(), 0, password.toStdString()));
+        "digest", "*", login.toStdString(), 0, password.toStdString()));
 
     // NAT Traversal
     cfg.natConfig.iceEnabled = config["ice"].toBool() ? PJ_TRUE : PJ_FALSE;
+    cfg.natConfig.contactRewriteUse =
+        config["allowIpRewrite"].toBool() ? PJ_TRUE : PJ_FALSE;
     QString turn = config["turnServer"].toString();
     if (!turn.isEmpty()) {
       cfg.natConfig.turnEnabled = PJ_TRUE;
