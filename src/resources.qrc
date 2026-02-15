@@ -1,0 +1,19 @@
+<RCC>
+    <qresource prefix="/">
+        <file>ui/main.qml</file>
+        <file>ui/AccountsView.qml</file>
+        <file>ui/ContactsView.qml</file>
+        <file>ui/HistoryView.qml</file>
+        <file>ui/DialpadView.qml</file>
+        <file>ui/SettingsWindow.qml</file>
+        <file>ui/InCallWindow.qml</file>
+        <file>ui/MessageWindow.qml</file>
+        <file>ui/MessageView.qml</file>
+        <file>ui/Theme.qml</file>
+        <file>ui/components/AppButton.qml</file>
+        <file>ui/components/AppCard.qml</file>
+        <file>ui/components/AppTextField.qml</file>
+        <file>ui/components/AppAvatar.qml</file>
+        <file>ui/qmldir</file>
+    </qresource>
+</RCC>

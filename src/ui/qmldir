@@ -1,0 +1,6 @@
+module microsip.ui
+singleton Theme 1.0 Theme.qml
+AppButton 1.0 components/AppButton.qml
+AppCard 1.0 components/AppCard.qml
+AppTextField 1.0 components/AppTextField.qml
+AppAvatar 1.0 components/AppAvatar.qml

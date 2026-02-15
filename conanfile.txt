@@ -1,0 +1,10 @@
+[requires]
+pjsip/2.14.1
+
+[generators]
+CMakeDeps
+CMakeToolchain
+VirtualRunEnv
+
+[layout]
+cmake_layout

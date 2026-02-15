@@ -1,0 +1,202 @@
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
+import MicrosipClone 1.0
+
+Item {
+    id: root
+
+    AccountModel {
+        id: accountModel
+    }
+
+    ColumnLayout {
+        anchors.fill: parent
+        anchors.margins: 10
+
+        ListView {
+            id: listView
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            clip: true
+            model: accountModel
+
+            delegate: ItemDelegate {
+                width: ListView.view.width
+                text: model.username + "@" + model.server
+                
+                contentItem: RowLayout {
+                    Button {
+                        text: model.active ? "Unregister" : "Register"
+                        onClicked: accountModel.toggleActive(index)
+                    }
+                    Item { Layout.fillWidth: true }
+                    Button {
+                        text: "Edit"
+                        onClicked: root.openEdit(index)
+                    }
+                    Button {
+                        text: "Remove"
+                        onClicked: accountModel.removeAccount(index)
+                    }
+                }
+            }
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            Button {
+                text: "Add Account"
+                onClicked: {
+                    addAccountDialog.editIndex = -1
+                    addAccountDialog.open()
+                }
+            }
+        }
+    }
+
+    Dialog {
+        id: addAccountDialog
+        title: "Add Account"
+        width: 400
+        height: 600
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        modal: true
+        x: (parent.width - width) / 2
+        y: (parent.height - height) / 2
+
+        ScrollView {
+            anchors.fill: parent
+            contentWidth: parent.width
+            contentHeight: formLayout.height
+            clip: true
+
+            ColumnLayout {
+                id: formLayout
+                width: parent.width
+                spacing: 10
+
+                TextField { id: accountNameField; placeholderText: "Account Name"; Layout.fillWidth: true }
+                TextField { id: serverField; placeholderText: "SIP Server"; Layout.fillWidth: true }
+                TextField { id: proxyField; placeholderText: "SIP Proxy"; Layout.fillWidth: true }
+                TextField { id: usernameField; placeholderText: "Username"; Layout.fillWidth: true }
+                TextField { id: domainField; placeholderText: "Domain"; Layout.fillWidth: true }
+                TextField { id: loginField; placeholderText: "Login"; Layout.fillWidth: true }
+                TextField { id: passwordField; placeholderText: "Password"; echoMode: TextInput.Password; Layout.fillWidth: true }
+                TextField { id: displayNameField; placeholderText: "Display Name"; Layout.fillWidth: true }
+                
+                RowLayout {
+                    Label { text: "Transport" }
+                    ComboBox {
+                        id: transportCombo
+                        model: ["Auto", "UDP", "TCP", "TLS"]
+                    }
+                }
+
+                RowLayout {
+                    Label { text: "Register Refresh" }
+                    SpinBox {
+                        id: refreshSpin
+                        value: 300
+                        to: 3600
+                        editable: true
+                    }
+                }
+
+                CheckBox { id: presenceCheck; text: "Publish Presence" }
+                CheckBox { id: iceCheck; text: "ICE" }
+                TextField { id: stunField; placeholderText: "STUN Server"; Layout.fillWidth: true; visible: iceCheck.checked }
+                TextField { id: turnField; placeholderText: "TURN Server"; Layout.fillWidth: true; visible: iceCheck.checked }
+                TextField { id: turnUserField; placeholderText: "TURN Username"; Layout.fillWidth: true; visible: turnField.text !== "" }
+                TextField { id: turnPassField; placeholderText: "TURN Password"; echoMode: TextInput.Password; Layout.fillWidth: true; visible: turnField.text !== "" }
+
+                RowLayout {
+                    Label { text: "SRTP" }
+                    ComboBox {
+                        id: srtpCombo
+                        model: ["Disabled", "Optional", "Mandatory"]
+                    }
+                }
+
+                CheckBox { id: rewriteCheck; text: "Allow IP Rewrite" }
+            }
+        }
+
+        property int editIndex: -1
+
+        onOpened: {
+            if (editIndex >= 0) {
+                var data = accountModel.getAccount(editIndex)
+                accountNameField.text = data["accountName"]
+                serverField.text = data["server"]
+                proxyField.text = data["proxy"]
+                usernameField.text = data["username"]
+                domainField.text = data["domain"]
+                loginField.text = data["login"]
+                passwordField.text = data["password"]
+                displayNameField.text = data["displayName"]
+                
+                var transp = data["transport"]
+                for(var i=0; i<transportCombo.model.length; i++) {
+                    if(transportCombo.model[i] === transp) transportCombo.currentIndex = i
+                }
+
+                refreshSpin.value = data["registerRefresh"]
+                presenceCheck.checked = data["publishPresence"]
+                iceCheck.checked = data["ice"]
+                rewriteCheck.checked = data["allowIpRewrite"]
+                
+                title = "Edit Account"
+            } else {
+                title = "Add Account"
+                accountNameField.clear()
+                serverField.clear()
+                proxyField.clear()
+                usernameField.clear()
+                domainField.clear()
+                loginField.clear()
+                passwordField.clear()
+                displayNameField.clear()
+                transportCombo.currentIndex = 0
+                refreshSpin.value = 300
+                presenceCheck.checked = false
+                iceCheck.checked = false
+                rewriteCheck.checked = false
+            }
+        }
+
+        onAccepted: {
+            var data = {
+                "accountName": accountNameField.text,
+                "server": serverField.text,
+                "proxy": proxyField.text,
+                "username": usernameField.text,
+                "domain": domainField.text,
+                "login": loginField.text,
+                "password": passwordField.text,
+                "displayName": displayNameField.text,
+                "transport": transportCombo.currentText,
+                "registerRefresh": refreshSpin.value,
+                "publishPresence": presenceCheck.checked,
+                "ice": iceCheck.checked,
+                "stunServer": stunField.text,
+                "turnServer": turnField.text,
+                "turnUser": turnUserField.text,
+                "turnPass": turnPassField.text,
+                "srtpMode": srtpCombo.currentIndex,
+                "allowIpRewrite": rewriteCheck.checked
+            }
+            
+            if (editIndex >= 0) {
+                accountModel.updateAccount(editIndex, data)
+            } else {
+                accountModel.addAccount(data)
+            }
+        }
+    }
+
+    function openEdit(index) {
+        addAccountDialog.editIndex = index
+        addAccountDialog.open()
+    }
+}
