@@ -36,6 +36,10 @@ struct AccountRecord {
   QString turnPass;
   int srtpMode; // 0:Disabled, 1:Optional, 2:Mandatory
   bool allowIpRewrite;
+  bool autoNat;
+  bool enableStun;
+  int ipVersion; // 0:IPv4, 1:IPv6, 2:Auto
+  bool rport;
   bool active;
 };
 
@@ -86,7 +90,8 @@ private:
   explicit StorageService(QObject *parent = nullptr);
   ~StorageService();
 
-  QSqlDatabase m_db;
+  QSqlDatabase database() const;
+  QString m_dbPath;
   bool createTables();
 };
 

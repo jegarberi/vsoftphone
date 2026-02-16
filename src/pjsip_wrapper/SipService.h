@@ -69,6 +69,8 @@ private:
   SipService &operator=(const SipService &) = delete;
 
   pj::Endpoint *m_endpoint;
+  pj::TransportId m_udpTransportId;
+  pj::TransportId m_tcpTransportId;
   QMap<QString, std::shared_ptr<MyAccount>> m_accounts;
 };
 

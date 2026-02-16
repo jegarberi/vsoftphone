@@ -11,6 +11,8 @@ struct CallData {
   bool hasVideo;
   bool isHeld;
   bool isInConference;
+  int lastStatus;
+  QString lastReason;
 };
 
 class CallModel : public QAbstractListModel {
@@ -22,7 +24,9 @@ public:
     StateRole,
     HasVideoRole,
     IsHeldRole,
-    IsInConferenceRole
+    IsInConferenceRole,
+    StatusRole,
+    ReasonRole
   };
 
   static CallModel &instance();
@@ -33,7 +37,8 @@ public:
   QHash<int, QByteArray> roleNames() const override;
 
   void addCall(int id, const QString &remoteUri);
-  void updateCallState(int id, const QString &state);
+  void updateCallState(int id, const QString &state, int status = 0,
+                       const QString &reason = "");
   void updateCallMedia(int id, bool hasVideo);
   void updateCallHold(int id, bool isHeld);
   void updateCallConference(int id, bool isInConference);

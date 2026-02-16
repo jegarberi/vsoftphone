@@ -11,6 +11,9 @@ class Theme : public QObject {
   Q_PROPERTY(bool isDarkMode READ isDarkMode WRITE setIsDarkMode NOTIFY
                  isDarkModeChanged)
 
+  // UI Scaling
+  Q_PROPERTY(double uiScale READ uiScale WRITE setUiScale NOTIFY uiScaleChanged)
+
   // Colors
   Q_PROPERTY(QString primaryStart READ primaryStart CONSTANT)
   Q_PROPERTY(QString primaryEnd READ primaryEnd CONSTANT)
@@ -43,27 +46,27 @@ class Theme : public QObject {
 
   // Typography
   Q_PROPERTY(QString fontFamily READ fontFamily CONSTANT)
-  Q_PROPERTY(int fontSizeCaption READ fontSizeCaption CONSTANT)
-  Q_PROPERTY(int fontSizeBody READ fontSizeBody CONSTANT)
-  Q_PROPERTY(int fontSizeSubtitle READ fontSizeSubtitle CONSTANT)
-  Q_PROPERTY(int fontSizeTitle READ fontSizeTitle CONSTANT)
-  Q_PROPERTY(int fontSizeDisplay READ fontSizeDisplay CONSTANT)
+  Q_PROPERTY(int fontSizeCaption READ fontSizeCaption NOTIFY uiScaleChanged)
+  Q_PROPERTY(int fontSizeBody READ fontSizeBody NOTIFY uiScaleChanged)
+  Q_PROPERTY(int fontSizeSubtitle READ fontSizeSubtitle NOTIFY uiScaleChanged)
+  Q_PROPERTY(int fontSizeTitle READ fontSizeTitle NOTIFY uiScaleChanged)
+  Q_PROPERTY(int fontSizeDisplay READ fontSizeDisplay NOTIFY uiScaleChanged)
 
   // Spacing
-  Q_PROPERTY(int spacing1 READ spacing1 CONSTANT)
-  Q_PROPERTY(int spacing2 READ spacing2 CONSTANT)
-  Q_PROPERTY(int spacing3 READ spacing3 CONSTANT)
-  Q_PROPERTY(int spacing4 READ spacing4 CONSTANT)
-  Q_PROPERTY(int spacing6 READ spacing6 CONSTANT)
-  Q_PROPERTY(int spacing8 READ spacing8 CONSTANT)
-  Q_PROPERTY(int spacing12 READ spacing12 CONSTANT)
-  Q_PROPERTY(int spacing16 READ spacing16 CONSTANT)
+  Q_PROPERTY(int spacing1 READ spacing1 NOTIFY uiScaleChanged)
+  Q_PROPERTY(int spacing2 READ spacing2 NOTIFY uiScaleChanged)
+  Q_PROPERTY(int spacing3 READ spacing3 NOTIFY uiScaleChanged)
+  Q_PROPERTY(int spacing4 READ spacing4 NOTIFY uiScaleChanged)
+  Q_PROPERTY(int spacing6 READ spacing6 NOTIFY uiScaleChanged)
+  Q_PROPERTY(int spacing8 READ spacing8 NOTIFY uiScaleChanged)
+  Q_PROPERTY(int spacing12 READ spacing12 NOTIFY uiScaleChanged)
+  Q_PROPERTY(int spacing16 READ spacing16 NOTIFY uiScaleChanged)
 
   // Border Radius
-  Q_PROPERTY(int radiusSmall READ radiusSmall CONSTANT)
-  Q_PROPERTY(int radiusMedium READ radiusMedium CONSTANT)
-  Q_PROPERTY(int radiusLarge READ radiusLarge CONSTANT)
-  Q_PROPERTY(int radiusXLarge READ radiusXLarge CONSTANT)
+  Q_PROPERTY(int radiusSmall READ radiusSmall NOTIFY uiScaleChanged)
+  Q_PROPERTY(int radiusMedium READ radiusMedium NOTIFY uiScaleChanged)
+  Q_PROPERTY(int radiusLarge READ radiusLarge NOTIFY uiScaleChanged)
+  Q_PROPERTY(int radiusXLarge READ radiusXLarge NOTIFY uiScaleChanged)
   Q_PROPERTY(int radiusRound READ radiusRound CONSTANT)
 
   // Animation
@@ -73,22 +76,21 @@ class Theme : public QObject {
   Q_PROPERTY(int easingStandard READ easingStandard CONSTANT)
 
   // Touch Targets
-  Q_PROPERTY(int minTouchTarget READ minTouchTarget CONSTANT)
-  Q_PROPERTY(int touchTargetComfortable READ touchTargetComfortable CONSTANT)
+  Q_PROPERTY(int minTouchTarget READ minTouchTarget NOTIFY uiScaleChanged)
+  Q_PROPERTY(int touchTargetComfortable READ touchTargetComfortable NOTIFY
+                 uiScaleChanged)
 
 public:
-  static Theme &instance() {
-    static Theme theme;
-    return theme;
-  }
+  static Theme &instance();
 
   bool isDarkMode() const { return m_isDarkMode; }
-  void setIsDarkMode(bool darkMode) {
-    if (m_isDarkMode != darkMode) {
-      m_isDarkMode = darkMode;
-      emit isDarkModeChanged();
-    }
-  }
+  void setIsDarkMode(bool darkMode);
+
+  double uiScale() const { return m_uiScale; }
+  void setUiScale(double scale);
+
+  Q_INVOKABLE void loadSettings();
+  Q_INVOKABLE void saveSettings();
 
   // Color Palette
   QString primaryStart() const { return "#4A90E2"; }
@@ -109,60 +111,38 @@ public:
   QString gray100() const { return "#F3F4F6"; }
   QString gray50() const { return "#F9FAFB"; }
 
-  // Dark Mode
-  QString darkBg1() const { return "#0F172A"; }
-  QString darkBg2() const { return "#1E293B"; }
-  QString darkBg3() const { return "#334155"; }
-  QString darkText() const { return "#F1F5F9"; }
-  QString darkTextSecondary() const { return "#94A3B8"; }
-
-  // Light Mode
-  QString lightBg1() const { return "#FFFFFF"; }
-  QString lightBg2() const { return "#F3F4F6"; }
-  QString lightBg3() const { return "#E5E7EB"; }
-  QString lightText() const { return "#1F2937"; }
-  QString lightTextSecondary() const { return "#6B7280"; }
-
   // Dynamic
-  QString background() const { return m_isDarkMode ? darkBg1() : lightBg1(); }
-  QString backgroundSecondary() const {
-    return m_isDarkMode ? darkBg2() : lightBg2();
-  }
-  QString backgroundTertiary() const {
-    return m_isDarkMode ? darkBg3() : lightBg3();
-  }
-  QString textPrimary() const {
-    return m_isDarkMode ? darkText() : lightText();
-  }
-  QString textSecondary() const {
-    return m_isDarkMode ? darkTextSecondary() : lightTextSecondary();
-  }
-  QString border() const { return m_isDarkMode ? gray700() : gray300(); }
-  QString borderLight() const { return m_isDarkMode ? gray800() : gray200(); }
+  QString background() const;
+  QString backgroundSecondary() const;
+  QString backgroundTertiary() const;
+  QString textPrimary() const;
+  QString textSecondary() const;
+  QString border() const;
+  QString borderLight() const;
 
   // Typography
   QString fontFamily() const { return "Inter, Roboto, sans-serif"; }
-  int fontSizeCaption() const { return 12; }
-  int fontSizeBody() const { return 14; }
-  int fontSizeSubtitle() const { return 16; }
-  int fontSizeTitle() const { return 20; }
-  int fontSizeDisplay() const { return 28; }
+  int fontSizeCaption() const { return 12 * m_uiScale; }
+  int fontSizeBody() const { return 14 * m_uiScale; }
+  int fontSizeSubtitle() const { return 16 * m_uiScale; }
+  int fontSizeTitle() const { return 20 * m_uiScale; }
+  int fontSizeDisplay() const { return 28 * m_uiScale; }
 
   // Spacing
-  int spacing1() const { return 4; }
-  int spacing2() const { return 8; }
-  int spacing3() const { return 12; }
-  int spacing4() const { return 16; }
-  int spacing6() const { return 24; }
-  int spacing8() const { return 32; }
-  int spacing12() const { return 48; }
-  int spacing16() const { return 64; }
+  int spacing1() const { return 4 * m_uiScale; }
+  int spacing2() const { return 8 * m_uiScale; }
+  int spacing3() const { return 12 * m_uiScale; }
+  int spacing4() const { return 16 * m_uiScale; }
+  int spacing6() const { return 24 * m_uiScale; }
+  int spacing8() const { return 32 * m_uiScale; }
+  int spacing12() const { return 48 * m_uiScale; }
+  int spacing16() const { return 64 * m_uiScale; }
 
   // Radius
-  int radiusSmall() const { return 4; }
-  int radiusMedium() const { return 8; }
-  int radiusLarge() const { return 12; }
-  int radiusXLarge() const { return 16; }
+  int radiusSmall() const { return 4 * m_uiScale; }
+  int radiusMedium() const { return 8 * m_uiScale; }
+  int radiusLarge() const { return 12 * m_uiScale; }
+  int radiusXLarge() const { return 16 * m_uiScale; }
   int radiusRound() const { return 999; }
 
   // Animation
@@ -172,18 +152,20 @@ public:
   int easingStandard() const { return 3; } // Easing.OutCubic
 
   // Touch
-  int minTouchTarget() const { return 44; }
-  int touchTargetComfortable() const { return 48; }
+  int minTouchTarget() const { return 44 * m_uiScale; }
+  int touchTargetComfortable() const { return 48 * m_uiScale; }
 
 signals:
   void isDarkModeChanged();
+  void uiScaleChanged();
 
 private:
-  Theme(QObject *parent = nullptr) : QObject(parent), m_isDarkMode(true) {}
+  explicit Theme(QObject *parent = nullptr);
   Theme(const Theme &) = delete;
   Theme &operator=(const Theme &) = delete;
 
   bool m_isDarkMode;
+  double m_uiScale;
 };
 
 #endif // THEME_H

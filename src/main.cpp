@@ -27,7 +27,6 @@ int main(int argc, char *argv[]) {
   StorageService::instance().init();
   SipService::instance().init();
 
-  qmlRegisterType<AccountModel>("MicrosipClone", 1, 0, "AccountModel");
   qmlRegisterType<ContactsModel>("MicrosipClone", 1, 0, "ContactsModel");
   qmlRegisterType<HistoryModel>("MicrosipClone", 1, 0, "HistoryModel");
   qmlRegisterType<MessageModel>("MicrosipClone", 1, 0, "MessageModel");
@@ -45,6 +44,8 @@ int main(int argc, char *argv[]) {
                                            &StorageService::instance());
   engine.rootContext()->setContextProperty("buddyService",
                                            &BuddyService::instance());
+  engine.rootContext()->setContextProperty("accountModel",
+                                           &AccountModel::instance());
   engine.rootContext()->setContextProperty("contactsModel",
                                            &ContactsModel::instance());
   engine.rootContext()->setContextProperty("callModel", &CallModel::instance());

@@ -2,6 +2,11 @@
 #include "../pjsip_wrapper/SipService.h"
 #include "../pjsip_wrapper/StorageService.h"
 
+AccountModel &AccountModel::instance() {
+  static AccountModel instance;
+  return instance;
+}
+
 AccountModel::AccountModel(QObject *parent) : QAbstractListModel(parent) {
   QList<AccountRecord> records = StorageService::instance().getAccounts();
   for (const auto &rec : records) {
@@ -24,8 +29,51 @@ AccountModel::AccountModel(QObject *parent) : QAbstractListModel(parent) {
                        rec.turnPass,
                        rec.srtpMode,
                        rec.allowIpRewrite,
+                       rec.autoNat,
+
+                       rec.enableStun,
+                       rec.ipVersion,
+                       rec.rport,
                        rec.active});
+    if (rec.active) {
+      QString id = rec.username + "@" + rec.domain;
+      // We need the data as a map for registration
+      QVariantMap config;
+      config["accountName"] = rec.accountName;
+      config["server"] = rec.server;
+      config["proxy"] = rec.proxy;
+      config["username"] = rec.username;
+      config["domain"] = rec.domain;
+      config["login"] = rec.login;
+      config["password"] = rec.password;
+      config["displayName"] = rec.displayName;
+      config["transport"] = rec.transport;
+      config["registerRefresh"] = rec.registerRefresh;
+      config["publishPresence"] = rec.publishPresence;
+      config["ice"] = rec.iceEnabled;
+      config["stunServer"] = rec.stunServer;
+      config["turnServer"] = rec.turnServer;
+      config["turnUser"] = rec.turnUser;
+      config["turnPass"] = rec.turnPass;
+      config["srtpMode"] = rec.srtpMode;
+      config["allowIpRewrite"] = rec.allowIpRewrite;
+      config["autoNat"] = rec.autoNat;
+
+      config["enableStun"] = rec.enableStun;
+      config["ipVersion"] = rec.ipVersion;
+      config["rport"] = rec.rport;
+      SipService::instance().registerAccount(id, config);
+    }
   }
+}
+
+QString AccountModel::defaultAccountId() const {
+  for (const auto &acc : m_accounts) {
+    if (acc.active) {
+      return acc.username + "@" + acc.domain;
+    }
+  }
+  return "";
 }
 
 int AccountModel::rowCount(const QModelIndex &parent) const {
@@ -79,6 +127,14 @@ QVariant AccountModel::data(const QModelIndex &index, int role) const {
     return account.srtpMode;
   case AllowIpRewriteRole:
     return account.allowIpRewrite;
+  case AutoNatRole:
+    return account.autoNat;
+  case EnableStunRole:
+    return account.enableStun;
+  case IpVersionRole:
+    return account.ipVersion;
+  case RportRole:
+    return account.rport;
   case ActiveRole:
     return account.active;
   default:
@@ -107,6 +163,9 @@ QHash<int, QByteArray> AccountModel::roleNames() const {
   roles[TurnPassRole] = "turnPass";
   roles[SrtpModeRole] = "srtpMode";
   roles[AllowIpRewriteRole] = "allowIpRewrite";
+  roles[AutoNatRole] = "autoNat";
+  roles[EnableStunRole] = "enableStun";
+  roles[IpVersionRole] = "ipVersion";
   roles[ActiveRole] = "active";
   return roles;
 }
@@ -131,6 +190,9 @@ void AccountModel::addAccount(const QVariantMap &data) {
   rec.turnPass = data["turnPass"].toString();
   rec.srtpMode = data["srtpMode"].toInt();
   rec.allowIpRewrite = data["allowIpRewrite"].toBool();
+  rec.autoNat = data["autoNat"].toBool();
+  rec.enableStun = data["enableStun"].toBool();
+  rec.ipVersion = data["ipVersion"].toInt();
   rec.active = true;
 
   StorageService::instance().addAccount(rec);
@@ -159,9 +221,15 @@ void AccountModel::addAccount(const QVariantMap &data) {
                        r.turnPass,
                        r.srtpMode,
                        r.allowIpRewrite,
+
+                       r.autoNat,
+                       r.enableStun,
+                       r.ipVersion,
+                       r.rport,
                        r.active});
   }
   endResetModel();
+  emit defaultAccountIdChanged();
 }
 
 void AccountModel::updateAccount(int index, const QVariantMap &data) {
@@ -191,6 +259,10 @@ void AccountModel::updateAccount(int index, const QVariantMap &data) {
   account.turnPass = data["turnPass"].toString();
   account.srtpMode = data["srtpMode"].toInt();
   account.allowIpRewrite = data["allowIpRewrite"].toBool();
+  account.autoNat = data["autoNat"].toBool();
+  account.enableStun = data["enableStun"].toBool();
+  account.ipVersion = data["ipVersion"].toInt();
+  account.rport = data["rport"].toBool();
 
   // Update DB
   AccountRecord rec;
@@ -213,6 +285,10 @@ void AccountModel::updateAccount(int index, const QVariantMap &data) {
   rec.turnPass = account.turnPass;
   rec.srtpMode = account.srtpMode;
   rec.allowIpRewrite = account.allowIpRewrite;
+  rec.autoNat = account.autoNat;
+  rec.enableStun = account.enableStun;
+  rec.ipVersion = account.ipVersion;
+  rec.rport = account.rport;
   rec.active = account.active;
   StorageService::instance().updateAccount(rec);
 
@@ -228,6 +304,7 @@ void AccountModel::updateAccount(int index, const QVariantMap &data) {
     QVariantMap config = data; // Pass all data including new fields
     SipService::instance().registerAccount(newId, config);
   }
+  emit defaultAccountIdChanged();
 }
 
 void AccountModel::removeAccount(int index) {
@@ -240,6 +317,7 @@ void AccountModel::removeAccount(int index) {
   beginRemoveRows(QModelIndex(), index, index);
   m_accounts.removeAt(index);
   endRemoveRows();
+  emit defaultAccountIdChanged();
 }
 
 void AccountModel::toggleActive(int index) {
@@ -270,6 +348,10 @@ void AccountModel::toggleActive(int index) {
   rec.turnPass = acc.turnPass;
   rec.srtpMode = acc.srtpMode;
   rec.allowIpRewrite = acc.allowIpRewrite;
+  rec.autoNat = acc.autoNat;
+  rec.enableStun = acc.enableStun;
+  rec.ipVersion = acc.ipVersion;
+  rec.rport = acc.rport;
   rec.active = acc.active;
   StorageService::instance().updateAccount(rec);
 
@@ -282,6 +364,7 @@ void AccountModel::toggleActive(int index) {
   } else {
     SipService::instance().unregisterAccount(id);
   }
+  emit defaultAccountIdChanged();
 }
 
 QVariantMap AccountModel::getAccount(int index) const {
@@ -308,5 +391,9 @@ QVariantMap AccountModel::getAccount(int index) const {
   data["turnPass"] = account.turnPass;
   data["srtpMode"] = account.srtpMode;
   data["allowIpRewrite"] = account.allowIpRewrite;
+  data["autoNat"] = account.autoNat;
+  data["enableStun"] = account.enableStun;
+  data["ipVersion"] = account.ipVersion;
+  data["rport"] = account.rport;
   return data;
 }

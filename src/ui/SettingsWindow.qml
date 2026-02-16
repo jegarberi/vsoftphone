@@ -27,6 +27,27 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 ColumnLayout {
                     width: parent.width
+                    spacing: Theme.spacing2
+
+                    CheckBox { 
+                        text: "Dark Mode"
+                        checked: Theme.isDarkMode
+                        onToggled: Theme.isDarkMode = checked
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Label { text: "UI Scale (" + Theme.uiScale.toFixed(2) + "x)" }
+                        Slider {
+                            id: uiScaleSlider
+                            from: 0.75
+                            to: 2.0
+                            value: Theme.uiScale
+                            Layout.fillWidth: true
+                            onMoved: Theme.uiScale = value
+                        }
+                    }
+
                     CheckBox { text: "Single Call Mode" }
                     RowLayout {
                         Label { text: "Ringtone" }
@@ -253,6 +274,7 @@ ApplicationWindow {
                 Button {
                     text: "Save"
                     onClicked: {
+                        Theme.saveSettings()
                         hardwareService.setAudioDevice(micDevCombo.currentIndex, speakerDevCombo.currentIndex)
                         hardwareService.speakerVolume = speakerVolSlider.value
                         hardwareService.micVolume = micVolSlider.value

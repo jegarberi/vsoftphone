@@ -26,11 +26,19 @@ struct Account {
   QString turnPass;
   int srtpMode; // 0:Disabled, 1:Optional, 2:Mandatory
   bool allowIpRewrite;
+  bool autoNat;
+
+  bool enableStun;
+  int ipVersion;
+  bool rport;
   bool active;
 };
 
 class AccountModel : public QAbstractListModel {
   Q_OBJECT
+  Q_PROPERTY(QString defaultAccountId READ defaultAccountId NOTIFY
+                 defaultAccountIdChanged)
+
 public:
   enum AccountRoles {
     IdRole = Qt::UserRole + 1,
@@ -52,10 +60,17 @@ public:
     TurnPassRole,
     SrtpModeRole,
     AllowIpRewriteRole,
+    AutoNatRole,
+    EnableStunRole,
+    IpVersionRole,
+    RportRole,
     ActiveRole
   };
 
+  static AccountModel &instance();
   explicit AccountModel(QObject *parent = nullptr);
+
+  QString defaultAccountId() const;
 
   int rowCount(const QModelIndex &parent = QModelIndex()) const override;
   QVariant data(const QModelIndex &index,
@@ -67,6 +82,9 @@ public:
   Q_INVOKABLE QVariantMap getAccount(int index) const;
   Q_INVOKABLE void removeAccount(int index);
   Q_INVOKABLE void toggleActive(int index);
+
+signals:
+  void defaultAccountIdChanged();
 
 private:
   QList<Account> m_accounts;

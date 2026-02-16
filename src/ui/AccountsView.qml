@@ -6,9 +6,6 @@ import MicrosipClone 1.0
 Item {
     id: root
 
-    AccountModel {
-        id: accountModel
-    }
 
     ColumnLayout {
         anchors.fill: parent
@@ -92,6 +89,14 @@ Item {
                         model: ["Auto", "UDP", "TCP", "TLS"]
                     }
                 }
+                
+                RowLayout {
+                    Label { text: "IP Version" }
+                    ComboBox {
+                        id: ipVersionCombo
+                        model: ["IPv4 Only", "IPv6 Only", "Auto"]
+                    }
+                }
 
                 RowLayout {
                     Label { text: "Register Refresh" }
@@ -104,6 +109,7 @@ Item {
                 }
 
                 CheckBox { id: presenceCheck; text: "Publish Presence" }
+                CheckBox { id: enableStunCheck; text: "Enable STUN" }
                 CheckBox { id: iceCheck; text: "ICE" }
                 TextField { id: stunField; placeholderText: "STUN Server"; Layout.fillWidth: true; visible: iceCheck.checked }
                 TextField { id: turnField; placeholderText: "TURN Server"; Layout.fillWidth: true; visible: iceCheck.checked }
@@ -119,6 +125,8 @@ Item {
                 }
 
                 CheckBox { id: rewriteCheck; text: "Allow IP Rewrite" }
+                CheckBox { id: rportCheck; text: "Enable Rport" }
+                CheckBox { id: autoNatCheck; text: "Automatic NAT Handling" }
             }
         }
 
@@ -140,11 +148,17 @@ Item {
                 for(var i=0; i<transportCombo.model.length; i++) {
                     if(transportCombo.model[i] === transp) transportCombo.currentIndex = i
                 }
+                
+                ipVersionCombo.currentIndex = data["ipVersion"]
 
                 refreshSpin.value = data["registerRefresh"]
                 presenceCheck.checked = data["publishPresence"]
+                enableStunCheck.checked = data["enableStun"]
                 iceCheck.checked = data["ice"]
+
                 rewriteCheck.checked = data["allowIpRewrite"]
+                rportCheck.checked = data["rport"]
+                autoNatCheck.checked = data["autoNat"]
                 
                 title = "Edit Account"
             } else {
@@ -158,10 +172,15 @@ Item {
                 passwordField.clear()
                 displayNameField.clear()
                 transportCombo.currentIndex = 0
+                ipVersionCombo.currentIndex = 2
                 refreshSpin.value = 300
                 presenceCheck.checked = false
+                enableStunCheck.checked = true
                 iceCheck.checked = false
+
                 rewriteCheck.checked = false
+                rportCheck.checked = false
+                autoNatCheck.checked = false
             }
         }
 
@@ -176,15 +195,20 @@ Item {
                 "password": passwordField.text,
                 "displayName": displayNameField.text,
                 "transport": transportCombo.currentText,
+                "ipVersion": ipVersionCombo.currentIndex,
                 "registerRefresh": refreshSpin.value,
                 "publishPresence": presenceCheck.checked,
+                "enableStun": enableStunCheck.checked,
                 "ice": iceCheck.checked,
                 "stunServer": stunField.text,
                 "turnServer": turnField.text,
                 "turnUser": turnUserField.text,
                 "turnPass": turnPassField.text,
                 "srtpMode": srtpCombo.currentIndex,
-                "allowIpRewrite": rewriteCheck.checked
+
+                "allowIpRewrite": rewriteCheck.checked,
+                "rport": rportCheck.checked,
+                "autoNat": autoNatCheck.checked
             }
             
             if (editIndex >= 0) {

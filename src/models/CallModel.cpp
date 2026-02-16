@@ -31,6 +31,10 @@ QVariant CallModel::data(const QModelIndex &index, int role) const {
     return call.isHeld;
   case IsInConferenceRole:
     return call.isInConference;
+  case StatusRole:
+    return call.lastStatus;
+  case ReasonRole:
+    return call.lastReason;
   }
   return QVariant();
 }
@@ -43,20 +47,25 @@ QHash<int, QByteArray> CallModel::roleNames() const {
   roles[HasVideoRole] = "hasVideo";
   roles[IsHeldRole] = "isHeld";
   roles[IsInConferenceRole] = "isInConference";
+  roles[StatusRole] = "lastStatus";
+  roles[ReasonRole] = "lastReason";
   return roles;
 }
 
 void CallModel::addCall(int id, const QString &remoteUri) {
   beginInsertRows(QModelIndex(), m_calls.count(), m_calls.count());
-  m_calls.append({id, remoteUri, "INCOMING", false, false, false});
+  m_calls.append({id, remoteUri, "INCOMING", false, false, false, 0, ""});
   endInsertRows();
 }
 
-void CallModel::updateCallState(int id, const QString &state) {
+void CallModel::updateCallState(int id, const QString &state, int status,
+                                const QString &reason) {
   for (int i = 0; i < m_calls.count(); ++i) {
     if (m_calls[i].id == id) {
       m_calls[i].state = state;
-      emit dataChanged(index(i), index(i), {StateRole});
+      m_calls[i].lastStatus = status;
+      m_calls[i].lastReason = reason;
+      emit dataChanged(index(i), index(i), {StateRole, StatusRole, ReasonRole});
       break;
     }
   }

@@ -16,7 +16,8 @@ void MyCall::onCallState(pj::OnCallStateParam &prm) {
 
   // Explicitly emit signals from CallService instance
   CallService::instance().callStateChanged(
-      getId(), QString::fromStdString(ci.stateText));
+      getId(), QString::fromStdString(ci.stateText), ci.lastStatusCode,
+      QString::fromStdString(ci.lastReason));
 
   if (ci.state == PJSIP_INV_STATE_DISCONNECTED) {
     QString direction = (ci.role == PJSIP_ROLE_UAC) ? "Outgoing" : "Incoming";
@@ -68,9 +69,10 @@ CallService::CallService(QObject *parent) : QObject(parent) {
     m_lastCallId = id;
     m_lastRemoteUri = uri;
   });
-  connect(this, &CallService::callStateChanged, [](int id, QString state) {
-    CallModel::instance().updateCallState(id, state);
-  });
+  connect(this, &CallService::callStateChanged,
+          [](int id, QString state, int status, QString reason) {
+            CallModel::instance().updateCallState(id, state, status, reason);
+          });
   connect(this, &CallService::callMediaStateChanged, [](int id, bool hasVideo) {
     CallModel::instance().updateCallMedia(id, hasVideo);
   });
@@ -88,8 +90,38 @@ void CallService::makeCall(const QString &accountId,
 
   auto call = std::make_shared<MyCall>(*acc);
   CallOpParam prm(true);
+  prm.opt.audioCount = 1;
+  prm.opt.videoCount = 0; // Disable video by default to keep SDP small
+
+  QString dest = destination;
+
+  // Strip sip: prefix for analysis if present
+  QString rawDest = dest;
+  if (rawDest.startsWith("sip:")) {
+    rawDest = rawDest.mid(4);
+  }
+
+  // If no domain is present, append it from the account
+  if (!rawDest.contains("@")) {
+    QString accountUri = accountId;
+    int atIdx = accountUri.indexOf('@');
+    if (atIdx != -1) {
+      QString domain = accountUri.mid(atIdx + 1);
+      rawDest = QString("%1@%2").arg(rawDest, domain);
+    }
+  }
+
+  // Re-assemble valid SIP URI
+  dest = "sip:" + rawDest;
+
+  if (!dest.startsWith("<")) {
+    dest = "<" + dest + ">";
+  }
+
+  qInfo() << "Making call to:" << dest;
+
   try {
-    call->makeCall(destination.toStdString(), prm);
+    call->makeCall(dest.toStdString(), prm);
     addCall(call);
     m_lastCallId = call->getId();
     m_lastRemoteUri = destination;

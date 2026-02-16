@@ -7,6 +7,9 @@
 #include <pjsua2.hpp>
 
 using namespace pj;
+#include <QSet>
+
+static QSet<QString> g_activeStunServers;
 
 SipService &SipService::instance() {
   static SipService _instance;
@@ -28,6 +31,15 @@ void SipService::init() {
 
     // Set max calls before libInit
     ep_cfg.uaConfig.maxCalls = 4;
+
+    // Force X-nat header in SDP (always enabled as requested)
+    ep_cfg.uaConfig.natTypeInSdp = 1;
+
+    // Mimic MicroSIP User Agent to ensure compatibility with strict PBX rules
+    ep_cfg.uaConfig.userAgent = "MicroSIP/3.21.3";
+
+    // Disable automatic switching from UDP to TCP
+    pjsip_cfg()->endpt.disable_tcp_switch = PJ_TRUE;
 
     // Try to initialize with default audio, but catch errors
     bool audioInitFailed = false;
@@ -65,16 +77,19 @@ void SipService::init() {
     TransportConfig t_cfg;
     t_cfg.port = 5060;
     try {
-      m_endpoint->transportCreate(PJSIP_TRANSPORT_UDP, t_cfg);
+      m_udpTransportId =
+          m_endpoint->transportCreate(PJSIP_TRANSPORT_UDP, t_cfg);
     } catch (Error &) {
       qWarning() << "Port 5060 occupied, trying auto-assign...";
       t_cfg.port = 0;
-      m_endpoint->transportCreate(PJSIP_TRANSPORT_UDP, t_cfg);
+      m_udpTransportId =
+          m_endpoint->transportCreate(PJSIP_TRANSPORT_UDP, t_cfg);
     }
 
     // Attempt TCP on the same port or auto-assign if UDP was auto-assigned
     try {
-      m_endpoint->transportCreate(PJSIP_TRANSPORT_TCP, t_cfg);
+      m_tcpTransportId =
+          m_endpoint->transportCreate(PJSIP_TRANSPORT_TCP, t_cfg);
     } catch (Error &err) {
       qWarning() << "Could not create TCP transport:"
                  << QString::fromStdString(err.info());
@@ -96,15 +111,24 @@ void SipService::init() {
 
     qDebug() << "PJSIP initialized successfully";
 
-    // Enumerating codecs
     try {
       const CodecInfoVector2 &codecs = m_endpoint->codecEnum2();
-      qDebug() << "Available Codecs:";
+      qDebug() << "Available Codecs (Configuring...):";
       for (unsigned i = 0; i < codecs.size(); ++i) {
-        qDebug() << " - " << QString::fromStdString(codecs[i].codecId);
+        QString codecId = QString::fromStdString(codecs[i].codecId);
+        bool priority = 0;
+        if (codecId.contains("PCMU") || codecId.contains("PCMA") ||
+            codecId.contains("G722") || codecId.contains("opus") ||
+            codecId.contains("telephone-event")) {
+          priority = 128 + i; // Give some priority
+        } else {
+          priority = 0; // Disable others to save SDP space
+        }
+        m_endpoint->codecSetPriority(codecs[i].codecId, priority);
+        qDebug() << " - " << codecId << "priority:" << priority;
       }
     } catch (Error &err) {
-      qWarning() << "Error enumerating codecs:"
+      qWarning() << "Error configuring codecs:"
                  << QString::fromStdString(err.info());
     }
 
@@ -154,11 +178,27 @@ void SipService::registerAccount(const QString &id, const QVariantMap &config) {
     QString password = config["password"].toString();
     QString proxy = config["proxy"].toString();
 
-    cfg.idUri = "sip:" + (username + "@" + domain).toStdString();
-    cfg.regConfig.registrarUri = "sip:" + domain.toStdString();
+    QString transport = config["transport"].toString().toLower();
+    std::string transportParam = "";
+    if (transport == "tcp") {
+      transportParam = ";transport=tcp";
+      cfg.sipConfig.transportId = m_tcpTransportId;
+    } else if (transport == "tls") {
+      transportParam = ";transport=tls";
+    } else if (transport == "udp") {
+      transportParam = ";transport=udp";
+      if (config["rport"].toBool()) {
+        transportParam += ";rport";
+      }
+      cfg.sipConfig.transportId = m_udpTransportId;
+    }
+
+    cfg.idUri = "<sip:" + (username + "@" + domain).toStdString() + ">";
+    cfg.regConfig.registrarUri = "sip:" + domain.toStdString() + transportParam;
 
     if (!proxy.isEmpty()) {
-      cfg.sipConfig.proxies.push_back("sip:" + proxy.toStdString());
+      cfg.sipConfig.proxies.push_back("sip:" + proxy.toStdString() +
+                                      transportParam);
     }
 
     QString login = config["login"].toString();
@@ -169,9 +209,77 @@ void SipService::registerAccount(const QString &id, const QVariantMap &config) {
         "digest", "*", login.toStdString(), 0, password.toStdString()));
 
     // NAT Traversal
+    bool autoNat = config["autoNat"].toBool();
+    bool allowIpRewrite = config["allowIpRewrite"].toBool();
+
+    if (autoNat) {
+      cfg.natConfig.contactRewriteUse = PJ_TRUE;
+      cfg.natConfig.viaRewriteUse = PJ_TRUE;
+      cfg.natConfig.sdpNatRewriteUse = PJ_TRUE;
+    } else {
+      cfg.natConfig.contactRewriteUse = allowIpRewrite ? PJ_TRUE : PJ_FALSE;
+      cfg.natConfig.viaRewriteUse = PJ_FALSE;
+      // If IP rewrite is allowed, we should also rewrite SDP to use the public
+      // IP instead of local IP (fixes 127.0.0.1 in c= line)
+      cfg.natConfig.sdpNatRewriteUse = allowIpRewrite ? PJ_TRUE : PJ_FALSE;
+    }
     cfg.natConfig.iceEnabled = config["ice"].toBool() ? PJ_TRUE : PJ_FALSE;
-    cfg.natConfig.contactRewriteUse =
-        config["allowIpRewrite"].toBool() ? PJ_TRUE : PJ_FALSE;
+
+    bool enableStun = config["enableStun"].toBool();
+    cfg.natConfig.sipStunUse =
+        enableStun ? PJSUA_STUN_USE_DEFAULT : PJSUA_STUN_USE_DISABLED;
+    cfg.natConfig.mediaStunUse =
+        enableStun ? PJSUA_STUN_USE_DEFAULT : PJSUA_STUN_USE_DISABLED;
+
+    // Rebuild global STUN servers from all active accounts
+    QSet<QString> activeStunServers;
+    QList<AccountRecord> records = StorageService::instance().getAccounts();
+    for (const auto &rec : records) {
+      if (rec.active && rec.enableStun) {
+        if (rec.stunServer.isEmpty()) {
+          activeStunServers.insert("stun.l.google.com:19302");
+        } else {
+          activeStunServers.insert(rec.stunServer);
+        }
+      }
+    }
+
+    // Apply to PJSIP
+    std::vector<std::string> stunStdStrs;
+    for (const QString &s : activeStunServers) {
+      stunStdStrs.push_back(s.toStdString());
+    }
+
+    // We must pass at least one server or empty list?
+    // If empty list, PJSIP will have no STUN servers.
+
+    pj_str_t *servers = nullptr;
+    if (!stunStdStrs.empty()) {
+      servers = new pj_str_t[stunStdStrs.size()];
+      for (size_t i = 0; i < stunStdStrs.size(); ++i) {
+        servers[i] = pj_str(const_cast<char *>(stunStdStrs[i].c_str()));
+      }
+
+      pj_status_t status =
+          pjsua_update_stun_servers(stunStdStrs.size(), servers, PJ_FALSE);
+      if (status != PJ_SUCCESS) {
+        qWarning() << "Failed to update global STUN servers:" << status;
+      } else {
+        qDebug() << "Updated global STUN servers, count:" << stunStdStrs.size();
+      }
+    } else {
+      // PJSIP crashes if we call update_stun_servers with 0 servers.
+      // We cannot clear the list dynamically with this API version.
+      // For now, allow it to remain as is (stale servers might persist if all
+      // accounts removed). Since we start with 0 servers in init(), this is
+      // only an issue if we add then remove all.
+      qDebug() << "No STUN servers to configure (skipping update to avoid "
+                  "assertion)";
+    }
+
+    if (servers)
+      delete[] servers;
+
     QString turn = config["turnServer"].toString();
     if (!turn.isEmpty()) {
       cfg.natConfig.turnEnabled = PJ_TRUE;
@@ -186,6 +294,20 @@ void SipService::registerAccount(const QString &id, const QVariantMap &config) {
     // 0:Disabled, 1:Optional, 2:Mandatory
     cfg.mediaConfig.srtpUse = (pjmedia_srtp_use)config["srtpMode"].toInt();
     cfg.mediaConfig.srtpSecureSignaling = 0;
+
+    // IP Version (0:IPv4, 1:IPv6, 2:Auto)
+    int ipVersion = config["ipVersion"].toInt();
+    if (ipVersion == 0) { // IPv4 Only
+      cfg.sipConfig.ipv6Use = PJSUA_IPV6_DISABLED;
+      cfg.mediaConfig.ipv6Use = PJSUA_IPV6_DISABLED;
+    } else if (ipVersion == 1) { // IPv6 Only
+      cfg.sipConfig.ipv6Use = PJSUA_IPV6_ENABLED;
+      cfg.mediaConfig.ipv6Use = PJSUA_IPV6_ENABLED;
+    } else { // Auto (2)
+      // Default pjsip behavior usually prefers IPv4 for media in dual stack
+      // unless configured otherwise
+      cfg.mediaConfig.ipv6Use = PJSUA_IPV6_ENABLED;
+    }
 
     auto acc = std::make_shared<MyAccount>();
     acc->create(cfg);

@@ -181,7 +181,7 @@ Item {
                         enabled: display.text !== ""
                         onClicked: {
                             if (display.text !== "") {
-                                callService.makeCall("1", "sip:" + display.text)
+                                callService.makeCall(accountModel.defaultAccountId, "sip:" + display.text)
                             }
                         }
                     }
@@ -227,7 +227,7 @@ Item {
                         enabled: display.text !== ""
                         onClicked: {
                             if (display.text !== "") {
-                                callService.makeCall("1", "sip:" + display.text)
+                                callService.makeCall(accountModel.defaultAccountId, "sip:" + display.text)
                             }
                         }
                     }

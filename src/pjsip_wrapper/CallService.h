@@ -21,18 +21,19 @@ class CallService : public QObject {
 public:
   static CallService &instance();
 
-  void makeCall(const QString &accountId, const QString &destination);
-  void answerCall(int callId);
-  void hangupCall(int callId);
-  void toggleMute(int callId);
-  void holdCall(int callId);
-  void resumeCall(int callId);
-  void transferCall(int callId, const QString &destination);
-  void attendedTransferCall(int callId, int destinationCallId);
-  void sendDtmf(int callId, const QString &digits);
+  Q_INVOKABLE void makeCall(const QString &accountId,
+                            const QString &destination);
+  Q_INVOKABLE void answerCall(int callId);
+  Q_INVOKABLE void hangupCall(int callId);
+  Q_INVOKABLE void toggleMute(int callId);
+  Q_INVOKABLE void holdCall(int callId);
+  Q_INVOKABLE void resumeCall(int callId);
+  Q_INVOKABLE void transferCall(int callId, const QString &destination);
+  Q_INVOKABLE void attendedTransferCall(int callId, int destinationCallId);
+  Q_INVOKABLE void sendDtmf(int callId, const QString &digits);
 
-  void addToConference(int callId);
-  void removeFromConference(int callId);
+  Q_INVOKABLE void addToConference(int callId);
+  Q_INVOKABLE void removeFromConference(int callId);
   bool isConferenceActive() const;
 
   void addCall(std::shared_ptr<MyCall> call);
@@ -44,7 +45,8 @@ public:
 signals:
   void incomingCall(int callId, QString remoteUri);
   void outgoingCall(int callId, QString remoteUri);
-  void callStateChanged(int callId, QString state);
+  void callStateChanged(int callId, QString state, int status = 0,
+                        QString reason = "");
   void callMediaStateChanged(int callId, bool hasVideo);
 
 private:

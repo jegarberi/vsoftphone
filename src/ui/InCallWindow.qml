@@ -19,6 +19,8 @@ ApplicationWindow {
     property bool isInConference: false
     property bool isMuted: false
     property int callDuration: 0
+    property int lastStatus: 0
+    property string lastReason: ""
     
     // Call duration timer
     Timer {
@@ -28,7 +30,13 @@ ApplicationWindow {
         repeat: true
         onTriggered: callDuration++
     }
-    
+
+    Timer {
+        id: closeTimer
+        interval: 3000
+        onTriggered: inCallWindow.close()
+    }
+
     function formatDuration(seconds) {
         var h = Math.floor(seconds / 3600)
         var m = Math.floor((seconds % 3600) / 60)
@@ -157,6 +165,7 @@ ApplicationWindow {
                             if (callState === "CALLING") return "Calling..."
                             if (callState === "INCOMING") return "Incoming Call"
                             if (callState === "CONFIRMED") return formatDuration(callDuration)
+                            if (callState === "DISCONNECTED" && lastStatus >= 400) return "Error: " + lastStatus + " " + lastReason
                             return callState
                         }
                         font.family: Theme.fontFamily
@@ -473,8 +482,15 @@ ApplicationWindow {
                     hasVideo = callModel.data(callModel.index(i, 0), Qt.UserRole + 4)
                     isHeld = callModel.data(callModel.index(i, 0), Qt.UserRole + 5)
                     isInConference = callModel.data(callModel.index(i, 0), Qt.UserRole + 6)
+                    lastStatus = callModel.data(callModel.index(i, 0), Qt.UserRole + 7)
+                    lastReason = callModel.data(callModel.index(i, 0), Qt.UserRole + 8)
+
                     if (callState === "DISCONNECTED") {
-                        inCallWindow.close()
+                        if (lastStatus >= 400) {
+                            closeTimer.start()
+                        } else {
+                            inCallWindow.close()
+                        }
                     }
                     break
                 }
