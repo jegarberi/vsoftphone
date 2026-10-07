@@ -48,6 +48,17 @@ ApplicationWindow {
                         }
                     }
 
+                    CheckBox {
+                        text: "Do Not Disturb"
+                        checked: sipService.doNotDisturb
+                        onToggled: sipService.doNotDisturb = checked
+                    }
+                    CheckBox {
+                        text: "Auto Answer"
+                        checked: sipService.autoAnswer
+                        onToggled: sipService.autoAnswer = checked
+                    }
+
                     CheckBox { text: "Single Call Mode" }
                     RowLayout {
                         Label { text: "Ringtone" }
@@ -82,6 +93,7 @@ ApplicationWindow {
                         }
                         ComboBox {
                             id: speakerDevCombo
+                            currentIndex: hardwareService.playbackIndex
                             model: hardwareService.audioPlaybackDevices.length > 0 ? hardwareService.audioPlaybackDevices : ["No devices available"]
                             Layout.fillWidth: true
                             enabled: hardwareService.audioPlaybackDevices.length > 0
@@ -92,6 +104,7 @@ ApplicationWindow {
                         }
                         ComboBox {
                             id: micDevCombo
+                            currentIndex: hardwareService.captureIndex
                             model: hardwareService.audioCaptureDevices.length > 0 ? hardwareService.audioCaptureDevices : ["No devices available"]
                             Layout.fillWidth: true
                             enabled: hardwareService.audioCaptureDevices.length > 0

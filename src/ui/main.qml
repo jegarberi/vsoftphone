@@ -272,6 +272,10 @@ ApplicationWindow {
                     
                     HistoryView {
                         id: historyTab
+                        onDialRequested: (number) => {
+                            dialpadTab.dial(number)
+                            currentView = 0
+                        }
                     }
                     
                     MessageView {

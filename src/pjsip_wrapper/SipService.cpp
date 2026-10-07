@@ -2,7 +2,10 @@
 #include "CallService.h"
 #include "HardwareService.h"
 #include "StorageService.h"
+#include "SipUri.h"
 #include <QDebug>
+#include <QNetworkInformation>
+#include <QSettings>
 #include <pjsua-lib/pjsua.h>
 #include <pjsua2.hpp>
 
@@ -17,7 +20,25 @@ SipService &SipService::instance() {
 }
 
 SipService::SipService(QObject *parent)
-    : QObject(parent), m_endpoint(nullptr) {}
+    : QObject(parent), m_endpoint(nullptr) {
+  QSettings settings;
+  m_doNotDisturb = settings.value("calls/doNotDisturb", false).toBool();
+  m_autoAnswer = settings.value("calls/autoAnswer", false).toBool();
+}
+
+void SipService::setDoNotDisturb(bool enabled) {
+  if (m_doNotDisturb.exchange(enabled) == enabled)
+    return;
+  QSettings().setValue("calls/doNotDisturb", enabled);
+  emit callHandlingChanged();
+}
+
+void SipService::setAutoAnswer(bool enabled) {
+  if (m_autoAnswer.exchange(enabled) == enabled)
+    return;
+  QSettings().setValue("calls/autoAnswer", enabled);
+  emit callHandlingChanged();
+}
 
 SipService::~SipService() { shutdown(); }
 
@@ -142,6 +163,27 @@ void SipService::init() {
     } catch (Error &err) {
       qWarning() << "Error configuring codecs:"
                  << QString::fromStdString(err.info());
+    }
+
+    // Re-register and refresh transports when the network comes back.
+    // ponytail: only sees reachability transitions, not an address change
+    // while staying online; watch QNetworkInterface if that turns out to matter.
+    if (QNetworkInformation::load(QNetworkInformation::Feature::Reachability)) {
+      connect(QNetworkInformation::instance(),
+              &QNetworkInformation::reachabilityChanged, this,
+              [this](QNetworkInformation::Reachability reachability) {
+                if (!m_endpoint ||
+                    reachability == QNetworkInformation::Reachability::Disconnected)
+                  return;
+                try {
+                  IpChangeParam prm;
+                  m_endpoint->handleIpChange(prm);
+                  qInfo() << "Network change handled, re-registering";
+                } catch (Error &err) {
+                  qWarning() << "Error handling network change:"
+                             << QString::fromStdString(err.info());
+                }
+              });
     }
 
     emit initStatusChanged(true, "Initialized");
@@ -366,6 +408,11 @@ void MyAccount::onRegState(pj::OnRegStateParam &prm) {
       QString::fromStdString(prm.reason));
 }
 void MyAccount::onIncomingCall(pj::OnIncomingCallParam &prm) {
+  if (SipService::instance().doNotDisturb()) {
+    pjsua_call_answer(prm.callId, PJSIP_SC_BUSY_HERE, nullptr, nullptr);
+    return;
+  }
+
   auto call = std::make_shared<MyCall>(*this, prm.callId);
   const int callId = prm.callId;
   QString remoteUri;
@@ -385,6 +432,8 @@ void MyAccount::onIncomingCall(pj::OnIncomingCallParam &prm) {
       [call, callId, remoteUri] {
         CallService::instance().addCall(call);
         emit CallService::instance().incomingCall(callId, remoteUri);
+        if (SipService::instance().autoAnswer())
+          CallService::instance().answerCall(callId);
       },
       Qt::QueuedConnection);
 }
@@ -418,9 +467,7 @@ void MyAccount::onTypingIndication(pj::OnTypingIndicationParam &prm) {
 // account's domain (accountId is "user@domain").
 static std::string toSipUri(const QString &destination,
                             const QString &accountId) {
-  QString dest = destination;
-  if (dest.startsWith("sip:"))
-    dest = dest.mid(4);
+  QString dest = bareSipUri(destination);
   if (!dest.contains('@'))
     dest += accountId.mid(accountId.indexOf('@'));
   return ("sip:" + dest).toStdString();

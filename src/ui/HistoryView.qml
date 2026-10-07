@@ -6,6 +6,8 @@ import MicrosipClone 1.0
 Item {
     id: root
 
+    signal dialRequested(string number)
+
     HistoryModel {
         id: historyModel
     }
@@ -56,7 +58,7 @@ Item {
                     
                     Button {
                         text: "Call"
-                        onClicked: console.log("Call " + model.remoteParty)
+                        onClicked: root.dialRequested(model.remoteParty)
                     }
                 }
             }

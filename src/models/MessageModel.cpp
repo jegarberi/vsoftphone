@@ -4,7 +4,11 @@
 #include "AccountModel.h"
 #include <QDebug>
 
-MessageModel::MessageModel(QObject *parent) : QAbstractListModel(parent) {}
+MessageModel::MessageModel(QObject *parent) : QAbstractListModel(parent) {
+  // Incoming messages are stored from the PJSIP thread; this queues to ours
+  connect(&StorageService::instance(), &StorageService::messagesChanged, this,
+          &MessageModel::loadMessages);
+}
 
 int MessageModel::rowCount(const QModelIndex &parent) const {
   if (parent.isValid())
@@ -74,5 +78,4 @@ void MessageModel::sendMessage(const QString &content) {
   // SipService stores the message once it has been handed to the stack
   SipService::instance().sendMessage(AccountModel::instance().defaultAccountId(),
                                      m_currentRemoteParty, content);
-  loadMessages();
 }

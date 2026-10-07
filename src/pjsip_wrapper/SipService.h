@@ -4,6 +4,7 @@
 #include <QMap>
 #include <QObject>
 #include <QVariantMap>
+#include <atomic>
 #include <memory>
 #include <pjsua2.hpp>
 
@@ -29,6 +30,11 @@ public:
 
 class SipService : public QObject {
   Q_OBJECT
+  Q_PROPERTY(bool doNotDisturb READ doNotDisturb WRITE setDoNotDisturb NOTIFY
+                 callHandlingChanged)
+  Q_PROPERTY(bool autoAnswer READ autoAnswer WRITE setAutoAnswer NOTIFY
+                 callHandlingChanged)
+
 public:
   static SipService &instance();
 
@@ -48,6 +54,11 @@ public:
   }
   pj::Endpoint *endpoint() { return m_endpoint; }
 
+  bool doNotDisturb() const { return m_doNotDisturb; }
+  void setDoNotDisturb(bool enabled);
+  bool autoAnswer() const { return m_autoAnswer; }
+  void setAutoAnswer(bool enabled);
+
   QList<std::shared_ptr<MyAccount>> getAccounts() const {
     return m_accounts.values();
   }
@@ -62,6 +73,7 @@ signals:
   void accountStateChanged(QString id, bool active, int statusCode,
                            QString statusText);
   void typingIndicationReceived(QString fromUri, bool isTyping);
+  void callHandlingChanged();
 
 private:
   explicit SipService(QObject *parent = nullptr);
@@ -71,6 +83,9 @@ private:
   SipService &operator=(const SipService &) = delete;
 
   pj::Endpoint *m_endpoint;
+  // Read from the PJSIP thread in onIncomingCall
+  std::atomic<bool> m_doNotDisturb{false};
+  std::atomic<bool> m_autoAnswer{false};
   pj::TransportId m_udpTransportId = PJSUA_INVALID_ID;
   pj::TransportId m_tcpTransportId = PJSUA_INVALID_ID;
   pj::TransportId m_tlsTransportId = PJSUA_INVALID_ID;

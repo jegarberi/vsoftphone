@@ -1,5 +1,6 @@
 #include "HardwareService.h"
 #include <QDebug>
+#include <QSettings>
 #include <pjsua2/endpoint.hpp>
 #include <pjsua2/media.hpp>
 
@@ -16,6 +17,21 @@ HardwareService::HardwareService(QObject *parent)
 void HardwareService::init(pj::Endpoint *endpoint) {
   m_endpoint = endpoint;
   refreshDevices();
+
+  // Restore saved audio settings; devices are matched by name
+  QSettings settings;
+  int capture = m_audioCaptureDevices.indexOf(
+      settings.value("audio/capture").toString());
+  int playback = m_audioPlaybackDevices.indexOf(
+      settings.value("audio/playback").toString());
+  if (capture >= 0 || playback >= 0)
+    setAudioDevice(capture, playback);
+  if (settings.contains("audio/speakerVolume"))
+    setSpeakerVolume(settings.value("audio/speakerVolume").toFloat());
+  if (settings.contains("audio/micVolume"))
+    setMicVolume(settings.value("audio/micVolume").toFloat());
+  if (settings.contains("audio/echoCancellation"))
+    setEchoCancellation(settings.value("audio/echoCancellation").toBool());
 }
 
 void HardwareService::refreshDevices() {
@@ -107,6 +123,8 @@ void HardwareService::setAudioDevice(int captureIdx, int playbackIdx) {
       } else {
         m_endpoint->audDevManager().setCaptureDev(pjCaptureIdx);
       }
+      m_captureIndex = captureIdx;
+      QSettings().setValue("audio/capture", m_audioCaptureDevices[captureIdx]);
     }
     if (playbackIdx >= 0 && playbackIdx < m_playbackDeviceIndices.size()) {
       int pjPlaybackIdx = m_playbackDeviceIndices[playbackIdx];
@@ -115,6 +133,9 @@ void HardwareService::setAudioDevice(int captureIdx, int playbackIdx) {
       } else {
         m_endpoint->audDevManager().setPlaybackDev(pjPlaybackIdx);
       }
+      m_playbackIndex = playbackIdx;
+      QSettings().setValue("audio/playback",
+                           m_audioPlaybackDevices[playbackIdx]);
     }
   } catch (Error &err) {
     qWarning() << "Error setting audio device:"
@@ -201,6 +222,10 @@ void HardwareService::startVideoPreview(int devIdx) {
 
         prm.format.id = chosen->id;
         prm.format.type = PJMEDIA_TYPE_VIDEO;
+        prm.format.width = chosen->width;
+        prm.format.height = chosen->height;
+        prm.format.fpsNum = chosen->fpsNum;
+        prm.format.fpsDenum = chosen->fpsDenum;
       }
     } catch (...) {
       // Fallback or ignore
@@ -246,6 +271,7 @@ void HardwareService::setSpeakerVolume(float volume) {
   try {
     unsigned vol = static_cast<unsigned>(volume * 100);
     m_endpoint->audDevManager().setOutputVolume(vol);
+    QSettings().setValue("audio/speakerVolume", volume);
     emit volumeChanged();
   } catch (...) {
   }
@@ -268,6 +294,7 @@ void HardwareService::setMicVolume(float volume) {
   try {
     unsigned vol = static_cast<unsigned>(volume * 100);
     m_endpoint->audDevManager().setInputVolume(vol);
+    QSettings().setValue("audio/micVolume", volume);
     emit volumeChanged();
   } catch (...) {
   }
@@ -281,6 +308,7 @@ void HardwareService::setEchoCancellation(bool enabled) {
   try {
     m_endpoint->audDevManager().setEcOptions(enabled ? 200 : 0, 0);
     m_echoCancellation = enabled;
+    QSettings().setValue("audio/echoCancellation", enabled);
     emit echoCancellationChanged();
   } catch (...) {
   }

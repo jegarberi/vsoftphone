@@ -42,10 +42,12 @@ class Pjsip(ConanFile):
         tc.configure_args.extend([
             "--disable-libwebrtc",
             "--enable-video",
-            "--with-ffmpeg",
+            # ponytail: PJSIP (checked up to 2.16) does not compile against
+            # FFmpeg >= 8, so the ffmpeg codecs (H.264/H.263) are off.
+            # Drop this and restore the av* system_libs once upstream catches up.
+            "--disable-ffmpeg",
             "--with-sdl",
             "--with-v4l2",
-            "ac_has_ffmpeg=1",
             "ac_pjmedia_video=1",
             "ac_sdl_ldflags=-lSDL2",
             "ac_v4l2_ldflags=-lv4l2"
@@ -86,32 +88,28 @@ class Pjsip(ConanFile):
     def package(self):
         autotools = Autotools(self)
         autotools.install()
-        rmdir(self, os.path.join(self.package_folder, "lib", "pkgconfig"))
 
     def package_info(self):
-        suffix = "-x86_64-unknown-linux-gnu"
-        # Order is important for static linking!
-        libs = [
-            "pjsua2", "pjsua", "pjsip-ua", "pjsip-simple", "pjsip", 
-            "pjmedia-codec", "pjmedia-videodev", "pjmedia-audiodev", "pjmedia", 
-            "pjnath", "pjlib-util", "pj",
-            # Third party libs bundled with PJSIP
-            "srtp", "resample", "speex", "ilbccodec", "g7221codec", "gsmcodec", "yuv"
-        ]
-        self.cpp_info.libs = [lib + suffix for lib in libs]
-        
-        # System libs needed by PJSIP
-        self.cpp_info.system_libs = ["m", "pthread", "rt", "uuid"]
-        
-        if self.settings.os == "Linux":
-            # Add system libraries that PJSIP was compiled against
-            # These replace the Conan dependencies
-            self.cpp_info.system_libs.extend([
-                "asound",   # ALSA
-                "SDL2",     # SDL2
-                "v4l2",     # V4L2
-                "opus",     # Opus
-                "vpx",      # VPX
-                "avdevice", "avformat", "avcodec", "avutil", "swscale", # FFmpeg
-                "ssl", "crypto" # OpenSSL
-            ])
+        # libpjproject.pc lists, in link order, the PJSIP libraries plus every
+        # system library configure detected on this machine (codecs, TLS, ...).
+        pc = os.path.join(self.package_folder, "lib", "pkgconfig", "libpjproject.pc")
+        libs, system_libs = [], []
+        with open(pc) as f:
+            for line in f:
+                if not line.startswith(("Libs:", "Libs.private:")):
+                    continue
+                for flag in line.split():
+                    if not flag.startswith("-l"):
+                        continue
+                    name = flag[2:]
+                    bundled = os.path.exists(
+                        os.path.join(self.package_folder, "lib", f"lib{name}.a"))
+                    target = libs if bundled else system_libs
+                    if name not in target:
+                        target.append(name)
+        # SDL is forced on through configure_args above, so configure never
+        # records it in the .pc file.
+        if "SDL2" not in system_libs:
+            system_libs.append("SDL2")
+        self.cpp_info.libs = libs
+        self.cpp_info.system_libs = system_libs

@@ -15,6 +15,8 @@ class HardwareService : public QObject {
   Q_PROPERTY(QStringList videoDevices READ videoDevices NOTIFY devicesChanged)
   Q_PROPERTY(QStringList audioCodecs READ audioCodecs NOTIFY devicesChanged)
   Q_PROPERTY(QStringList videoCodecs READ videoCodecs NOTIFY devicesChanged)
+  Q_PROPERTY(int captureIndex READ captureIndex NOTIFY devicesChanged)
+  Q_PROPERTY(int playbackIndex READ playbackIndex NOTIFY devicesChanged)
   Q_PROPERTY(float speakerVolume READ speakerVolume WRITE setSpeakerVolume
                  NOTIFY volumeChanged)
   Q_PROPERTY(
@@ -32,6 +34,8 @@ public:
   QStringList videoDevices() const { return m_videoDevices; }
   QStringList audioCodecs() const { return m_audioCodecs; }
   QStringList videoCodecs() const { return m_videoCodecs; }
+  int captureIndex() const { return m_captureIndex; }
+  int playbackIndex() const { return m_playbackIndex; }
 
   Q_INVOKABLE void refreshDevices();
   Q_INVOKABLE void setAudioDevice(int captureIdx, int playbackIdx);
@@ -62,6 +66,8 @@ private:
   pj::Endpoint *m_endpoint;
   pj::VideoPreview *m_videoPreview;
   bool m_echoCancellation = true; // pjsua enables EC by default
+  int m_captureIndex = 0; // positions in the lists exposed to QML
+  int m_playbackIndex = 0;
   QStringList m_audioPlaybackDevices;
   QStringList m_audioCaptureDevices;
   QList<int> m_playbackDeviceIndices;

@@ -1,6 +1,7 @@
 #include "CallService.h"
 #include "../models/CallModel.h"
 #include "SipService.h"
+#include "SipUri.h"
 #include "StorageService.h"
 #include <QDebug>
 
@@ -120,30 +121,11 @@ void CallService::makeCall(const QString &accountId,
   prm.opt.audioCount = 1;
   prm.opt.videoCount = 0; // Disable video by default to keep SDP small
 
-  QString dest = destination;
-
-  // Strip sip: prefix for analysis if present
-  QString rawDest = dest;
-  if (rawDest.startsWith("sip:")) {
-    rawDest = rawDest.mid(4);
-  }
-
-  // If no domain is present, append it from the account
-  if (!rawDest.contains("@")) {
-    QString accountUri = accountId;
-    int atIdx = accountUri.indexOf('@');
-    if (atIdx != -1) {
-      QString domain = accountUri.mid(atIdx + 1);
-      rawDest = QString("%1@%2").arg(rawDest, domain);
-    }
-  }
-
-  // Re-assemble valid SIP URI
-  dest = "sip:" + rawDest;
-
-  if (!dest.startsWith("<")) {
-    dest = "<" + dest + ">";
-  }
+  // Bare user gets the account's domain (accountId is "user@domain")
+  QString rawDest = bareSipUri(destination);
+  if (!rawDest.contains('@'))
+    rawDest += accountId.mid(accountId.indexOf('@'));
+  const QString dest = "<sip:" + rawDest + ">";
 
   qInfo() << "Making call to:" << dest;
 

@@ -88,6 +88,7 @@ public:
 
 signals:
   void callHistoryChanged();
+  void messagesChanged();
 
 private:
   explicit StorageService(QObject *parent = nullptr);

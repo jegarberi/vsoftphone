@@ -1,4 +1,5 @@
 #include "StorageService.h"
+#include "SipUri.h"
 #include <QDebug>
 #include <QDir>
 #include <QSqlError>
@@ -199,13 +200,14 @@ void StorageService::addMessage(const QString &remoteParty,
   query.prepare(
       "INSERT INTO messages (remoteParty, direction, content, timestamp) "
       "VALUES (:rp, :dir, :con, :ts)");
-  query.bindValue(":rp", remoteParty);
+  query.bindValue(":rp", bareSipUri(remoteParty));
   query.bindValue(":dir", direction);
   query.bindValue(":con", content);
   query.bindValue(":ts", QDateTime::currentDateTime());
   if (!query.exec()) {
     qWarning() << "Error adding message:" << query.lastError().text();
   }
+  emit messagesChanged();
 }
 
 void StorageService::addAccount(const AccountRecord &acc) {
@@ -346,8 +348,12 @@ QList<MessageRecord> StorageService::getMessages(const QString &remoteParty) {
   QList<MessageRecord> list;
   QSqlQuery query(database());
   query.prepare("SELECT id, remoteParty, direction, content, timestamp FROM "
-                "messages WHERE remoteParty = :rp ORDER BY id ASC");
-  query.bindValue(":rp", remoteParty);
+                "messages WHERE remoteParty = :rp OR remoteParty LIKE :pat "
+                "ORDER BY id ASC");
+  // A contact saved as a bare number also owns "number@anyhost"
+  const QString key = bareSipUri(remoteParty);
+  query.bindValue(":rp", key);
+  query.bindValue(":pat", key.contains('@') ? key : key + "@%");
   if (query.exec()) {
     while (query.next()) {
       MessageRecord rec;

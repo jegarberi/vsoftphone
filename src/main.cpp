@@ -17,6 +17,9 @@
 #include "ui/Theme.h"
 
 int main(int argc, char *argv[]) {
+  // PJSIP's SDL video backend would otherwise swallow SIGINT/SIGTERM
+  qputenv("SDL_NO_SIGNAL_HANDLERS", "1");
+
   QGuiApplication app(argc, argv);
 
   app.setOrganizationName("Antigravity");

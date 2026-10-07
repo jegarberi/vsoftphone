@@ -1,4 +1,5 @@
 #include "HistoryModel.h"
+#include "../pjsip_wrapper/SipUri.h"
 #include "../pjsip_wrapper/StorageService.h"
 
 HistoryModel::HistoryModel(QObject *parent) : QAbstractListModel(parent) {
@@ -34,7 +35,7 @@ QVariant HistoryModel::data(const QModelIndex &index, int role) const {
   case IdRole:
     return entry.id;
   case RemotePartyRole:
-    return entry.remoteParty;
+    return bareSipUri(entry.remoteParty);
   case DirectionRole:
     return entry.direction;
   case TimestampRole:
