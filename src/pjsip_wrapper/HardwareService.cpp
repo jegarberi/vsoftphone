@@ -98,6 +98,20 @@ void HardwareService::refreshDevices() {
       m_playbackDeviceIndices.append(-99);
     }
 
+    // Audio Codecs
+    const CodecInfoVector2 &aCodecs = m_endpoint->codecEnum2();
+    for (unsigned i = 0; i < aCodecs.size(); ++i) {
+      m_audioCodecs.append(QString::fromStdString(aCodecs[i].codecId));
+    }
+
+  } catch (Error &err) {
+    qWarning() << "Error refreshing devices:"
+               << QString::fromStdString(err.info());
+  }
+
+  // Video is separate: a PJSIP built without it must not cost us the lists
+  // above (PJSUA_HAS_VIDEO is 0 in the portable build)
+  try {
     // Video Devices
     VidDevManager &vdm = m_endpoint->vidDevManager();
     VideoDevInfoVector2 videoDevs = vdm.enumDev2();
@@ -115,12 +129,6 @@ void HardwareService::refreshDevices() {
       qDebug() << " - Video Device:" << friendlyName;
     }
 
-    // Audio Codecs
-    const CodecInfoVector2 &aCodecs = m_endpoint->codecEnum2();
-    for (unsigned i = 0; i < aCodecs.size(); ++i) {
-      m_audioCodecs.append(QString::fromStdString(aCodecs[i].codecId));
-    }
-
     // Video Codecs
     const CodecInfoVector2 &vCodecs = m_endpoint->videoCodecEnum2();
     qDebug() << "HardwareService: Found" << vCodecs.size() << "video codecs";
@@ -131,8 +139,7 @@ void HardwareService::refreshDevices() {
     }
 
   } catch (Error &err) {
-    qWarning() << "Error refreshing devices:"
-               << QString::fromStdString(err.info());
+    qInfo() << "No video support:" << QString::fromStdString(err.info());
   }
 
   emit devicesChanged();

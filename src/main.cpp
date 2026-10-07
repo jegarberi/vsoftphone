@@ -1,8 +1,10 @@
 #include <QDir>
+#include <QFile>
 #include <QGuiApplication>
-#include <QLockFile>
 #include <QQmlApplicationEngine>
 #include <QStandardPaths>
+#include <fcntl.h>
+#include <sys/file.h>
 
 #include "QmlSetup.h"
 #include "pjsip_wrapper/SipService.h"
@@ -22,9 +24,11 @@ int main(int argc, char *argv[]) {
   const QString dataDir =
       QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
   QDir().mkpath(dataDir);
-  QLockFile instanceLock(dataDir + "/instance.lock");
-  instanceLock.setStaleLockTime(0);
-  if (!instanceLock.tryLock()) {
+  // Held until the process ends, however it ends, so it can never go stale
+  const int lockFd =
+      ::open(QFile::encodeName(dataDir + "/instance.lock").constData(),
+             O_RDWR | O_CREAT | O_CLOEXEC, 0600);
+  if (lockFd < 0 || ::flock(lockFd, LOCK_EX | LOCK_NB) != 0) {
     qCritical("MicrosipClone is already running");
     return 1;
   }

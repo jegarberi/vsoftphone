@@ -5,8 +5,21 @@ project(microsip_clone VERSION 0.1 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(pjsip REQUIRED)
-find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 Network Multimedia Sql)
+option(MICROSIP_PJSIP_PKGCONFIG "Find a statically built PJSIP through pkg-config instead of Conan" OFF)
+option(MICROSIP_KEYRING "Keep passwords in the desktop keyring when libsecret is present" ON)
+
+find_package(PkgConfig)
+if(MICROSIP_PJSIP_PKGCONFIG)
+    # The _STATIC_ variables include Libs.private: PJSIP's own dependencies
+    pkg_check_modules(PJSIP REQUIRED libpjproject)
+    add_library(pjsip::pjsip INTERFACE IMPORTED)
+    target_include_directories(pjsip::pjsip INTERFACE ${PJSIP_STATIC_INCLUDE_DIRS})
+    target_compile_options(pjsip::pjsip INTERFACE ${PJSIP_STATIC_CFLAGS_OTHER})
+    target_link_libraries(pjsip::pjsip INTERFACE ${PJSIP_STATIC_LDFLAGS})
+else()
+    find_package(pjsip REQUIRED)
+endif()
+find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 Network Sql)
 
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
@@ -14,6 +27,7 @@ set(CMAKE_AUTORCC ON)
 # Everything except main() and the QML resources, so the test can link it too
 add_library(microsip_core STATIC
     src/QmlSetup.cpp
+    src/QtLibcxxCompat.cpp
     src/pjsip_wrapper/SipService.cpp
     src/pjsip_wrapper/HardwareService.cpp
     src/pjsip_wrapper/CallService.cpp
@@ -37,7 +51,6 @@ target_link_libraries(microsip_core PUBLIC
     Qt6::Quick
     Qt6::QuickControls2
     Qt6::Network
-    Qt6::Multimedia
     Qt6::Sql
     pjsip::pjsip
 )
@@ -55,8 +68,7 @@ if(NOT MSVC)
 endif()
 
 # Optional: keep SIP passwords in the desktop keyring instead of the database
-find_package(PkgConfig)
-if(PkgConfig_FOUND)
+if(MICROSIP_KEYRING AND PkgConfig_FOUND)
     pkg_check_modules(LIBSECRET IMPORTED_TARGET libsecret-1)
 endif()
 if(LIBSECRET_FOUND)

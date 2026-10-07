@@ -198,13 +198,19 @@ void BlfService::subscriptionEnded(pjsip_evsub *sub) {
   QMetaObject::invokeMethod(
       this,
       [this, accountId] {
-        QTimer::singleShot(60000, this, [this, accountId] {
+        // A QTimer object rather than QTimer::singleShot(): see
+        // QtLibcxxCompat.cpp
+        auto *retry = new QTimer(this);
+        retry->setSingleShot(true);
+        connect(retry, &QTimer::timeout, this, [this, accountId, retry] {
+          retry->deleteLater();
           QMutexLocker lock(&m_mutex);
           const bool active = m_subs.contains(accountId);
           lock.unlock();
           if (!active && m_wanted.contains(accountId))
             subscribe(accountId, m_wanted[accountId]);
         });
+        retry->start(60000);
       },
       Qt::QueuedConnection);
 }

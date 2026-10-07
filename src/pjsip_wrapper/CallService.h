@@ -20,7 +20,12 @@ public:
 
 class CallService : public QObject {
   Q_OBJECT
+  // False when PJSIP was built without video, as in the portable build
+  Q_PROPERTY(bool videoAvailable READ videoAvailable CONSTANT)
+
 public:
+  bool videoAvailable() const { return PJSUA_HAS_VIDEO; }
+
   static CallService &instance();
 
   Q_INVOKABLE void makeCall(const QString &accountId,

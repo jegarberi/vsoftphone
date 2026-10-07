@@ -8,3 +8,4 @@ softphone_output.txt
 pjsip_debug.txt
 build_log.txt
 *_ldd.txt
+build-static

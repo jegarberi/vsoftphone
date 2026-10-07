@@ -262,6 +262,7 @@ ApplicationWindow {
 
             GroupBox {
                 title: "Video"
+                visible: callService.videoAvailable
                 Layout.fillWidth: true
                 ColumnLayout {
                     width: parent.width

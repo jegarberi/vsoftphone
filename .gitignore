@@ -10,3 +10,4 @@ pjsip_debug.txt
 build_log.txt
 *_ldd.txt
 3rdparty/
+build-static/

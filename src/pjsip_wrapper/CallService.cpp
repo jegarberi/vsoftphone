@@ -143,7 +143,7 @@ void CallService::makeCall(const QString &accountId,
   auto call = std::make_shared<MyCall>(*acc);
   CallOpParam prm(true);
   prm.opt.audioCount = 1;
-  prm.opt.videoCount = video ? 1 : 0;
+  prm.opt.videoCount = (video && videoAvailable()) ? 1 : 0;
 
   qInfo() << "Making call to:" << dest;
 

@@ -148,6 +148,7 @@ Item {
                 
                 // Video Call Button
                 Rectangle {
+                    visible: callService.videoAvailable
                     width: 56
                     height: 56
                     radius: Theme.radiusRound

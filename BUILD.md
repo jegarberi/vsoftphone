@@ -62,6 +62,42 @@ MICROSIP_TEST_TURN=host:port MICROSIP_TEST_TURN_USER=user \
 MICROSIP_TEST_TURN_PASS=pass build/Release/call_flow_test
 ```
 
+## Makefile
+
+`make help` lists the targets; `make build`, `make test`, `make run` and
+`make docker` wrap the steps above.
+
+## Portable build
+
+```bash
+make static        # build-static/dist, for glibc 2.35 and newer
+make static-check  # prints the newest glibc version the binaries need
+make static-test   # runs the call test from dist/ in an Ubuntu 22.04 container
+```
+
+`make static` compiles everything with [zig](https://ziglang.org) targeting an
+older glibc (`GLIBC=2.35` by default; `make static GLIBC=2.31` for older) and
+links PJSIP, OpenSSL, Opus and the C++ runtime statically. zig and the Qt
+downloader are installed into `.venv` if they are not already available.
+
+Three things stay dynamic, because they cannot sensibly be static:
+
+- glibc, at the chosen version or newer
+- ALSA (`libasound.so.2`), which loads the sound server's plugins at run time
+- Qt, taken from the official Qt binaries and shipped in `dist/` next to the
+  executable
+
+So the result is a folder, not a single file. Copy `build-static/dist` to the
+target machine and run `dist/microsip_clone`. The target needs the usual
+desktop libraries Qt depends on (OpenGL, fontconfig, xkbcommon, D-Bus).
+
+The portable build has no video and no keyring support: SDL, V4L2, the video
+codecs and libsecret would each need to be built the same way. The video
+controls are hidden in that build.
+
+The host needs the ALSA, OpenGL and xkbcommon development headers; only those
+are exposed to the compiler, so the system's own glibc headers never get in.
+
 ## Docker
 
 ```bash
