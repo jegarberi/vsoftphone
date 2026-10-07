@@ -1,4 +1,5 @@
 #include "HardwareService.h"
+#include "SipService.h"
 #include <QDebug>
 #include <QSettings>
 #include <pjsua2/endpoint.hpp>
@@ -29,6 +30,9 @@ void HardwareService::restoreSettings() {
       settings.value("audio/playback").toString());
   if (capture >= 0 || playback >= 0)
     setAudioDevice(capture, playback);
+  m_savedVideoDevice = settings.value("video/capture").toString();
+  m_videoIndex = qMax(0, m_videoDevices.indexOf(m_savedVideoDevice));
+  emit devicesChanged();
   // Volumes are not restored: they are the device's own mixer levels, and
   // forcing ours at startup would override what the user set elsewhere
   if (settings.contains("audio/echoCancellation"))
@@ -42,6 +46,26 @@ void HardwareService::saveSettings() {
   settings.setValue("audio/playback",
                     m_audioPlaybackDevices.value(m_playbackIndex));
   settings.setValue("audio/echoCancellation", m_echoCancellation);
+
+  // The camera is part of each account's configuration
+  const QString camera = m_videoDevices.value(m_videoIndex);
+  settings.setValue("video/capture", camera);
+  if (camera != m_savedVideoDevice) {
+    m_savedVideoDevice = camera;
+    SipService::instance().markAccountsChanged();
+  }
+}
+
+void HardwareService::setVideoDevice(int index) {
+  if (index < 0 || index >= m_videoDevices.size() || index == m_videoIndex)
+    return;
+  m_videoIndex = index;
+  emit devicesChanged();
+}
+
+int HardwareService::selectedVideoDevice() const {
+  return m_videoDeviceIndices.value(m_videoIndex,
+                                    PJMEDIA_VID_DEFAULT_CAPTURE_DEV);
 }
 
 void HardwareService::refreshDevices() {
@@ -112,6 +136,13 @@ void HardwareService::refreshDevices() {
     VidDevManager &vdm = m_endpoint->vidDevManager();
     VideoDevInfoVector2 videoDevs = vdm.enumDev2();
     qDebug() << "HardwareService: Found" << videoDevs.size() << "video devices";
+    bool anyCamera = false;
+    for (unsigned i = 0; i < videoDevs.size(); ++i)
+      anyCamera = anyCamera || videoDevs[i].dir != PJMEDIA_DIR_RENDER;
+    if (anyCamera) {
+      m_videoDevices.append("System default");
+      m_videoDeviceIndices.append(PJMEDIA_VID_DEFAULT_CAPTURE_DEV);
+    }
     for (unsigned i = 0; i < videoDevs.size(); ++i) {
       const VideoDevInfo &info = videoDevs[i];
       QString name = QString::fromStdString(info.name);
@@ -263,14 +294,11 @@ void HardwareService::startVideoPreview(int devIdx) {
     stopVideoPreview();
 
     // devIdx is a position in the camera list shown to the user
-    if (devIdx >= m_videoDeviceIndices.size())
-      devIdx = -1;
-    if (devIdx >= 0)
-      devIdx = m_videoDeviceIndices[devIdx];
-    if (devIdx < 0) {
+    if (devIdx < 0 || devIdx >= m_videoDeviceIndices.size()) {
       qWarning() << "HardwareService: Invalid video device index" << devIdx;
       return;
     }
+    devIdx = m_videoDeviceIndices[devIdx];
 
     m_videoPreview = new VideoPreview(devIdx);
     VideoPreviewOpParam prm;
@@ -282,6 +310,8 @@ void HardwareService::startVideoPreview(int devIdx) {
     // Try to find a native format to avoid assertion failure in vid_port.c
     try {
       VidDevManager &mgr = m_endpoint->vidDevManager();
+      if (devIdx < 0)
+        throw Error(); // the default camera: let PJSIP pick its format
       VideoDevInfo devInfo = mgr.getDevInfo(devIdx);
       if (!devInfo.fmt.empty()) {
         const MediaFormatVideo *chosen = nullptr;
@@ -313,6 +343,7 @@ void HardwareService::startVideoPreview(int devIdx) {
     }
 
     m_videoPreview->start(prm);
+    emit videoPreviewChanged();
     qDebug() << "HardwareService: Video preview started for device" << devIdx;
   } catch (Error &err) {
     qWarning() << "Error starting video preview:"
@@ -321,6 +352,7 @@ void HardwareService::startVideoPreview(int devIdx) {
       delete m_videoPreview;
       m_videoPreview = nullptr;
     }
+    emit videoPreviewChanged();
   }
 }
 
@@ -332,6 +364,7 @@ void HardwareService::stopVideoPreview() {
     }
     delete m_videoPreview;
     m_videoPreview = nullptr;
+    emit videoPreviewChanged();
   }
 }
 

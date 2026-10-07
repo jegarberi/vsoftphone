@@ -29,6 +29,7 @@
 #include "models/MessageModel.h"
 #include "pjsip_wrapper/BlfService.h"
 #include "pjsip_wrapper/CallService.h"
+#include "pjsip_wrapper/HardwareService.h"
 #include "pjsip_wrapper/Keyring.h"
 #include "pjsip_wrapper/SipService.h"
 #include "pjsip_wrapper/SipUri.h"
@@ -193,6 +194,59 @@ static pj_bool_t blfServerOnRxRequest(pjsip_rx_data *rdata) {
   return PJ_TRUE;
 }
 
+// A stand-in registrar and proxy pair. Every REGISTER is accepted, so the
+// accounts really register. Requests routed through "127.0.0.1" (the first
+// proxy of the failover account) get 503 while primaryProxyDown is set; the
+// same socket also answers as "127.0.0.2", its second proxy.
+static bool primaryProxyDown = false;
+
+static pj_bool_t registrarOnRxRequest(pjsip_rx_data *rdata) {
+  pjsip_msg *msg = rdata->msg_info.msg;
+  const bool isRegister = msg->line.req.method.id == PJSIP_REGISTER_METHOD;
+  const bool isOptions = msg->line.req.method.id == PJSIP_OPTIONS_METHOD;
+  if (!isRegister && !isOptions)
+    return PJ_FALSE;
+
+  // A REGISTER names its proxy in the Route header; the OPTIONS probe is
+  // addressed to the proxy itself
+  pjsip_uri *via = msg->line.req.uri;
+  if (isRegister) {
+    auto *route = static_cast<pjsip_route_hdr *>(
+        pjsip_msg_find_hdr(msg, PJSIP_H_ROUTE, nullptr));
+    via = route ? route->name_addr.uri : nullptr;
+  }
+  bool throughPrimary = false;
+  if (via) {
+    auto *uri = static_cast<pjsip_sip_uri *>(pjsip_uri_get_uri(via));
+    throughPrimary = pj_strcmp2(&uri->host, "127.0.0.1") == 0;
+  }
+  // The plain test account has no proxy and registers at 127.0.0.1 directly
+  if (isOptions && !throughPrimary)
+    return PJ_FALSE;
+  const int code = primaryProxyDown && throughPrimary ? 503 : 200;
+
+  // A registrar echoes the binding it accepted
+  pjsip_hdr headers;
+  pj_list_init(&headers);
+  if (code == 200 && isRegister) {
+    for (int type : {int(PJSIP_H_CONTACT), int(PJSIP_H_EXPIRES)}) {
+      auto *header = static_cast<pjsip_hdr *>(
+          pjsip_msg_find_hdr(msg, pjsip_hdr_e(type), nullptr));
+      if (header)
+        pj_list_push_back(&headers, pjsip_hdr_clone(rdata->tp_info.pool, header));
+    }
+  }
+  pjsip_endpt_respond_stateless(pjsua_get_pjsip_endpt(), rdata, code, nullptr,
+                                &headers, nullptr);
+  return PJ_TRUE;
+}
+
+static pjsip_module registrarModule = {
+    nullptr, nullptr, {(char *)"mod-test-registrar", 18}, -1,
+    PJSIP_MOD_PRIORITY_APPLICATION - 1,
+    nullptr, nullptr, nullptr, nullptr, &registrarOnRxRequest, nullptr,
+    nullptr, nullptr, nullptr};
+
 static pjsip_module blfServerModule = {
     nullptr, nullptr, {(char *)"mod-test-blf-server", 19}, -1,
     PJSIP_MOD_PRIORITY_APPLICATION - 1, // ahead of PJSUA, which answers 489
@@ -222,6 +276,7 @@ static int historyCount(const QString &direction) {
 int main(int argc, char *argv[]) {
   qputenv("QT_QPA_PLATFORM", "offscreen");
   qputenv("SDL_NO_SIGNAL_HANDLERS", "1");
+  qputenv("SDL_VIDEODRIVER", "dummy"); // the camera preview opens no window
   QStandardPaths::setTestModeEnabled(true); // keep away from the real profile
   QGuiApplication app(argc, argv);
   app.setOrganizationName("AntigravityTest");
@@ -286,6 +341,8 @@ int main(int argc, char *argv[]) {
   blfServerContact = QString("<sip:blflist@%1>").arg(domain).toStdString();
   CHECK(pjsip_endpt_register_module(pjsua_get_pjsip_endpt(),
                                     &blfServerModule) == PJ_SUCCESS);
+  CHECK(pjsip_endpt_register_module(pjsua_get_pjsip_endpt(),
+                                    &registrarModule) == PJ_SUCCESS);
   const QString accountId = "tester@" + domain;
 
   // --- account -------------------------------------------------------------
@@ -298,12 +355,43 @@ int main(int argc, char *argv[]) {
   CHECK(accounts.rowCount() == 1);
   CHECK(accounts.defaultAccountId() == accountId);
   CHECK(sip.getAccount(accountId)); // registered right after being added
-  // Nothing answers REGISTER here, so a failure status must reach the model
-  CHECK(waitFor([&] {
-    return !accounts.data(accounts.index(0), AccountModel::StatusRole)
-                .toString()
-                .isEmpty();
-  }, 40000));
+  // The stand-in registrar accepts it, and the model hears about it
+  auto statusOf = [&](int row) {
+    return accounts.data(accounts.index(row), AccountModel::StatusRole)
+        .toString();
+  };
+  CHECK(waitFor([&] { return statusOf(0) == "Registered"; }));
+
+  // --- outbound proxy failover ----------------------------------------------
+  {
+    const QString port = domain.section(':', 1);
+    const QString failoverId = "failover@" + domain;
+    primaryProxyDown = true;
+    accounts.addAccount({{"accountName", "failover"}, {"username", "failover"},
+                         {"domain", domain},          {"password", "secret"},
+                         {"transport", "UDP"},        {"enableStun", false},
+                         {"ipVersion", 0},
+                         {"proxy", "127.0.0.1:" + port},
+                         {"proxy2", "127.0.0.2:" + port}});
+    // The first proxy refuses, so the account registers through the second
+    CHECK(waitFor([&] {
+      return sip.usingBackupProxy(failoverId) &&
+             statusOf(1) == "Registered (second proxy)";
+    }));
+    // A network change probes the first proxy: still down, so it stays put
+    sip.recheckProxies();
+    pump(1000);
+    CHECK(sip.usingBackupProxy(failoverId));
+    CHECK(statusOf(1) == "Registered (second proxy)");
+    // The first proxy is back: the next network change returns to it
+    primaryProxyDown = false;
+    sip.recheckProxies();
+    CHECK(waitFor([&] {
+      return !sip.usingBackupProxy(failoverId) && statusOf(1) == "Registered";
+    }));
+    accounts.removeAccount(1);
+    CHECK(accounts.rowCount() == 1);
+  }
 
   // --- contacts and presence subscription ----------------------------------
   ContactsModel &contacts = ContactsModel::instance();
@@ -519,6 +607,38 @@ int main(int argc, char *argv[]) {
     CHECK(cfg.sip_stun_use == PJSUA_STUN_USE_DISABLED);
   });
   account["enableStun"] = false;
+
+  // --- camera: the chosen one reaches the account, and can be previewed ------
+  if (callService.videoAvailable()) {
+    HardwareService &hardware = HardwareService::instance();
+    const QStringList cameras = hardware.videoDevices();
+    int colorbar = -1;
+    for (int i = 0; i < cameras.size(); ++i) {
+      if (cameras[i].startsWith("Colorbar generator"))
+        colorbar = i; // PJSIP's built-in test pattern
+    }
+    CHECK(cameras.value(0) == "System default" && colorbar > 0);
+    hardware.setVideoDevice(colorbar);
+    CHECK(hardware.videoIndex() == colorbar);
+    hardware.saveSettings();
+    sip.applyNetworkSettings(); // the accounts are rebuilt with it
+    accountConfig([&](const pjsua_acc_config &cfg) {
+      CHECK(cfg.vid_cap_dev == hardware.selectedVideoDevice());
+      CHECK(cfg.vid_cap_dev != PJMEDIA_VID_DEFAULT_CAPTURE_DEV);
+    });
+
+    hardware.startVideoPreview(colorbar);
+    const bool previewed = hardware.videoPreviewActive();
+    pump(300);
+    hardware.stopVideoPreview();
+    CHECK(!hardware.videoPreviewActive());
+    std::printf("call_flow_test: camera preview %s\n",
+                previewed ? "verified" : "NOT started (no usable display)");
+
+    hardware.setVideoDevice(0);
+    hardware.saveSettings();
+    sip.applyNetworkSettings();
+  }
 
   // --- ICE: media negotiates candidates and comes up ------------------------
   sip.setAutoAnswer(true);
@@ -745,6 +865,84 @@ int main(int argc, char *argv[]) {
     callService.hangupCall(callId(0));
     CHECK(waitFor([] { return CallModel::instance().rowCount() == 0; }));
     std::puts("call_flow_test: IPv6 call verified");
+  }
+
+  // --- against a real server, on request -----------------------------------
+  // The Asterisk in asterisk/compose.yaml:
+  //   MICROSIP_TEST_ASTERISK=host:5080 MICROSIP_TEST_PASSWORD_1001=...
+  //   MICROSIP_TEST_PASSWORD_1002=... build/Release/call_flow_test
+  const QString server = qEnvironmentVariable("MICROSIP_TEST_ASTERISK");
+  if (!server.isEmpty()) {
+    auto phone = [&](const QString &user) {
+      return QVariantMap{
+          {"username", user},   {"domain", server},
+          {"password", qEnvironmentVariable(
+                           ("MICROSIP_TEST_PASSWORD_" + user).toUtf8())},
+          {"transport", "UDP"}, {"enableStun", false},
+          {"ipVersion", 0},     {"blfUri", "blf-" + user}};
+    };
+    auto lampOfNumber = [&](const QString &user) {
+      for (int i = 0; i < contacts.rowCount(); ++i) {
+        const QModelIndex row = contacts.index(i);
+        if (contacts.data(row, ContactsModel::NumberRole)
+                .toString()
+                .startsWith(user + "@"))
+          return contacts.data(row, ContactsModel::StatusRole).toString();
+      }
+      return QString();
+    };
+    const QString alice = "1001@" + server;
+    sip.setAutoAnswer(true);
+
+    // Digest authentication against a real registrar
+    accounts.addAccount(phone("1001"));
+    accounts.addAccount(phone("1002"));
+    CHECK(waitFor([&] {
+      return statusOf(0) == "Registered" && statusOf(1) == "Registered";
+    }, 15000));
+
+    // A call the server answers, with audio coming back from it
+    callService.makeCall(alice, "601");
+    CHECK(waitFor([] { return allConfirmed(1); }, 15000));
+    const int toneCall = callId(0);
+    CHECK(waitFor([&] {
+      pjsua_stream_stat stat;
+      return pjsua_call_get_stream_stat(toneCall, 0, &stat) == PJ_SUCCESS &&
+             stat.rtcp.rx.pkt > 20;
+    }));
+    callService.hangupCall(toneCall);
+    CHECK(waitFor([] { return CallModel::instance().rowCount() == 0; }));
+
+    // The busy lamp list: 1001 watches 1002 through one subscription
+    CHECK(waitFor([&] { return lampOfNumber("1002") == "Idle"; }, 15000));
+
+    // 1001 calls 1002 through the server; 1002 answers, its lamp goes busy
+    callService.makeCall(alice, "1002");
+    CHECK(waitFor([] { return allConfirmed(2); }, 15000));
+    CHECK(waitFor([&] { return lampOfNumber("1002") == "Busy"; }, 10000));
+    callService.hangupCall(callId(0));
+    CHECK(waitFor([] { return CallModel::instance().rowCount() == 0; }));
+    CHECK(waitFor([&] { return lampOfNumber("1002") == "Idle"; }, 10000));
+
+    // A message relayed by the server arrives in 1002's conversation with 1001
+    MessageModel outbox, inbox;
+    outbox.setCurrentRemoteParty("1002");
+    inbox.setCurrentRemoteParty("1001");
+    outbox.sendMessage("relayed by asterisk");
+    CHECK(waitFor([&] {
+      for (int i = 0; i < inbox.rowCount(); ++i) {
+        if (inbox.data(inbox.index(i), MessageModel::DirectionRole) ==
+                "Incoming" &&
+            inbox.data(inbox.index(i), MessageModel::ContentRole) ==
+                "relayed by asterisk")
+          return true;
+      }
+      return false;
+    }, 10000));
+
+    accounts.removeAccount(1);
+    accounts.removeAccount(0);
+    std::puts("call_flow_test: real server verified");
   }
 
   std::puts("call_flow_test: ALL OK");

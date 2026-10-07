@@ -17,6 +17,10 @@ class HardwareService : public QObject {
   Q_PROPERTY(QStringList videoCodecs READ videoCodecs NOTIFY devicesChanged)
   Q_PROPERTY(int captureIndex READ captureIndex NOTIFY devicesChanged)
   Q_PROPERTY(int playbackIndex READ playbackIndex NOTIFY devicesChanged)
+  // The camera used for video calls, as a position in videoDevices
+  Q_PROPERTY(int videoIndex READ videoIndex NOTIFY devicesChanged)
+  Q_PROPERTY(bool videoPreviewActive READ videoPreviewActive NOTIFY
+                 videoPreviewChanged)
   Q_PROPERTY(float speakerVolume READ speakerVolume WRITE setSpeakerVolume
                  NOTIFY volumeChanged)
   Q_PROPERTY(
@@ -36,6 +40,11 @@ public:
   QStringList videoCodecs() const { return m_videoCodecs; }
   int captureIndex() const { return m_captureIndex; }
   int playbackIndex() const { return m_playbackIndex; }
+  int videoIndex() const { return m_videoIndex; }
+  bool videoPreviewActive() const { return m_videoPreview != nullptr; }
+  Q_INVOKABLE void setVideoDevice(int index);
+  // PJSIP's id of the chosen camera, or its "default camera" id
+  int selectedVideoDevice() const;
 
   Q_INVOKABLE void refreshDevices();
   Q_INVOKABLE void setAudioDevice(int captureIdx, int playbackIdx);
@@ -68,6 +77,7 @@ signals:
   void devicesChanged();
   void volumeChanged();
   void echoCancellationChanged();
+  void videoPreviewChanged();
 
 private:
   explicit HardwareService(QObject *parent = nullptr);
@@ -76,6 +86,8 @@ private:
   bool m_echoCancellation = true; // pjsua enables EC by default
   int m_captureIndex = 0; // positions in the lists exposed to QML
   int m_playbackIndex = 0;
+  int m_videoIndex = 0;
+  QString m_savedVideoDevice; // what the accounts were last built with
   QStringList m_audioPlaybackDevices;
   QStringList m_audioCaptureDevices;
   QList<int> m_playbackDeviceIndices;

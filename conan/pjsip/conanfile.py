@@ -37,6 +37,11 @@ class Pjsip(ConanFile):
         # line so the installed headers say the same thing to the application.
         with open("pjlib/include/pj/config_site.h", "a") as f:
             f.write("#define PJ_HAS_IPV6 1\n")
+            # Same for video: built with it on the command line only, the
+            # application would compile against headers that say it is off
+            f.write("#define PJMEDIA_HAS_VIDEO 1\n")
+            f.write("#define PJMEDIA_VIDEO_DEV_HAS_V4L2 1\n")
+            f.write("#define PJMEDIA_VIDEO_DEV_HAS_SDL 1\n")
 
     def generate(self):
         from conan.tools.env import VirtualBuildEnv
@@ -65,9 +70,6 @@ class Pjsip(ConanFile):
 
         tc.extra_cflags.extend([
             "-DPJ_AUTOCONF=1",
-            "-DPJMEDIA_HAS_VIDEO=1",
-            "-DPJMEDIA_VIDEO_DEV_HAS_V4L2=1",
-            "-DPJMEDIA_VIDEO_DEV_HAS_SDL=1",
         ] + pkg_config("--cflags", "sdl2", "libv4l2"))
         tc.extra_ldflags.extend(pkg_config("--libs", "sdl2", "libv4l2"))
 

@@ -44,6 +44,7 @@ struct AccountRecord {
   bool rport;
   bool active;
   QString blfUri; // BroadWorks busy lamp field list URI
+  QString proxy2; // outbound proxy used when the first one fails
 };
 
 struct ContactRecord {

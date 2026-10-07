@@ -1,0 +1,20 @@
+# A throwaway Asterisk for trying the softphone against a real SIP server:
+# two accounts that can call and message each other, an echo test, and a
+# busy-lamp list for each account.
+#
+#   docker compose -f asterisk/compose.yaml up --build      (or: make asterisk)
+#
+# The settings to enter in each softphone are printed when it starts.
+services:
+  asterisk:
+    build: .
+    # SIP and RTP straight on the host's network: no NAT between phone and
+    # server to confuse either. Linux only.
+    network_mode: host
+    environment:
+      # Not 5060, which a softphone on this machine wants for itself
+      SIP_PORT: "5080"
+      # Passwords are random on every start unless given here
+      PASSWORD_1001: "${PASSWORD_1001:-}"
+      PASSWORD_1002: "${PASSWORD_1002:-}"
+    stop_grace_period: 3s

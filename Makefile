@@ -313,6 +313,30 @@ endif
 	find $(DIST) -name '*.debug' -delete
 	printf '[Paths]\nPrefix = .\nPlugins = plugins\nQmlImports = qml\n' > $(DIST)/qt.conf
 
+##@ Test server (Asterisk in Docker, Linux)
+
+ASTERISK := docker compose -f asterisk/compose.yaml
+
+.PHONY: asterisk
+asterisk: ## Start an Asterisk with two accounts and print the settings for each softphone
+	$(ASTERISK) up -d --build --quiet-pull
+	@sleep 3
+	@$(ASTERISK) logs --no-log-prefix asterisk | sed -n '/=== Softphone settings/,/^====*$$/p' | tail -n 14
+
+.PHONY: asterisk-down
+asterisk-down: ## Stop it
+	$(ASTERISK) down
+
+# Fixed passwords here: the test has to know them
+.PHONY: asterisk-test
+asterisk-test: ## Run the call test against that Asterisk as well (registration, calls, messages, busy lamps)
+	PASSWORD_1001=test-pass-1001 PASSWORD_1002=test-pass-1002 $(ASTERISK) up -d --build --quiet-pull --force-recreate
+	@sleep 5
+	MICROSIP_TEST_ASTERISK=$$(ip -4 route get 1.1.1.1 | sed -n 's/.* src \([0-9.]*\).*/\1/p'):5080 \
+	MICROSIP_TEST_PASSWORD_1001=test-pass-1001 MICROSIP_TEST_PASSWORD_1002=test-pass-1002 \
+	  build/Release/call_flow_test 2>&1 | grep -a "call_flow_test:"
+	$(ASTERISK) down
+
 ##@ Help
 
 .PHONY: help

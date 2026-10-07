@@ -27,6 +27,7 @@ ApplicationWindow {
 
         hardwareService.setAudioDevice(micDevCombo.currentIndex, speakerDevCombo.currentIndex)
         hardwareService.echoCancellation = ecCheckBox.checked
+        hardwareService.setVideoDevice(cameraDevCombo.currentIndex)
         hardwareService.saveSettings()
         for (var i = 0; i < codecRepeater.count; i++)
             hardwareService.setCodecEnabled(codecRepeater.itemAt(i).text, codecRepeater.itemAt(i).checked)
@@ -55,6 +56,7 @@ ApplicationWindow {
     // Apply goes back to what was saved
     onClosing: {
         Theme.loadSettings()
+        hardwareService.stopVideoPreview()
         hardwareService.restoreSettings()
         hardwareService.speakerVolume = initialSpeakerVolume
         hardwareService.micVolume = initialMicVolume
@@ -266,27 +268,39 @@ ApplicationWindow {
             }
 
             // --- Video ------------------------------------------------------
-            Heading { text: "VIDEO"; visible: callService.videoAvailable }
+            Heading { text: "VIDEO" }
+            Hint {
+                visible: !callService.videoAvailable
+                text: "This build has no video support."
+            }
+            Label { text: "Camera"; visible: callService.videoAvailable }
             ComboBox {
                 id: cameraDevCombo
                 Layout.fillWidth: true
                 visible: callService.videoAvailable
+                enabled: count > 0
                 model: hardwareService.videoDevices
+                currentIndex: hardwareService.videoIndex
+                // A running preview follows the selection
+                onActivated: if (hardwareService.videoPreviewActive) hardwareService.startVideoPreview(currentIndex)
             }
             RowLayout {
                 Layout.fillWidth: true
                 visible: callService.videoAvailable
-                Button {
-                    flat: true
-                    text: "Preview"
+                spacing: 10
+                PillButton {
+                    text: hardwareService.videoPreviewActive ? "Stop preview" : "Preview"
+                    kind: hardwareService.videoPreviewActive ? "accent" : "tonal"
                     enabled: cameraDevCombo.count > 0
-                    onClicked: hardwareService.startVideoPreview(cameraDevCombo.currentIndex)
+                    onClicked: hardwareService.videoPreviewActive
+                        ? hardwareService.stopVideoPreview()
+                        : hardwareService.startVideoPreview(cameraDevCombo.currentIndex)
                 }
-                Button {
-                    flat: true
-                    text: "Stop preview"
-                    onClicked: hardwareService.stopVideoPreview()
-                }
+                Hint { text: "The preview opens in its own window." }
+            }
+            Hint {
+                visible: callService.videoAvailable && cameraDevCombo.count === 0
+                text: "No camera found."
             }
 
             // --- Network ----------------------------------------------------

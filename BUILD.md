@@ -61,6 +61,22 @@ MICROSIP_TEST_TURN=host:port MICROSIP_TEST_TURN_USER=user \
 MICROSIP_TEST_TURN_PASS=pass build/Release/call_flow_test
 ```
 
+## A SIP server to try it against
+
+```bash
+make asterisk        # starts Asterisk in Docker and prints the account settings
+make asterisk-down
+make asterisk-test   # runs the call test against it too
+```
+
+`asterisk/compose.yaml` runs an Asterisk with two accounts, 1001 and 1002,
+that can call and message each other, an echo test on 600, a tone on 601, and
+a busy-lamp list for each account. It uses the host's network (Linux only)
+and listens on port 5080, leaving 5060 to the softphone. Passwords are random
+on every start and are printed with the rest of the settings; run two copies
+of the softphone on different machines, or one here and one elsewhere on the
+network, and enter one account in each.
+
 ## Screenshots
 
 The test can save a picture of every window and of each tab:

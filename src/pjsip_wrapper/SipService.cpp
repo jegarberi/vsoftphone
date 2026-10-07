@@ -14,6 +14,7 @@
 #include <QSslCertificate>
 #include <QSslConfiguration>
 #include <QStandardPaths>
+#include <QTimer>
 #include <pjsua-lib/pjsua.h>
 #include <functional>
 #include <future>
@@ -34,6 +35,12 @@ SipService::SipService(QObject *parent)
   m_autoAnswer = settings.value("calls/autoAnswer", false).toBool();
   m_acceptIpCalls = settings.value("calls/acceptIpCalls", true).toBool();
 
+  // Emitted from the PJSIP thread; `this` as context queues it to ours
+  connect(this, &SipService::accountStateChanged, this,
+          [this](QString id, bool active, int code, QString) {
+            onRegistrationResult(id, active, code);
+          });
+
   // The global TURN password: system store when there is one, settings file
   // otherwise, and back to the settings file if storing it fails
   connect(&SecretStore::instance(), &SecretStore::stored, this,
@@ -46,6 +53,137 @@ SipService::SipService(QObject *parent)
             if (key == SecretStore::TurnPasswordKey)
               QSettings().setValue("network/turnPassword", turnPassword());
           });
+}
+
+// The proxies an account may use, in order of preference
+static QStringList proxiesOf(const QVariantMap &config) {
+  QStringList proxies;
+  for (const char *key : {"proxy", "proxy2"}) {
+    const QString proxy = config[key].toString().trimmed();
+    if (!proxy.isEmpty())
+      proxies.append(proxy);
+  }
+  return proxies;
+}
+
+static QString transportParamOf(const QVariantMap &config) {
+  const QString transport = config["transport"].toString().toLower();
+  return (transport == "tcp" || transport == "tls" || transport == "udp")
+             ? ";transport=" + transport
+             : QString();
+}
+
+// A registration that failed because nothing answered, or the proxy said it
+// cannot serve, is a reason to try the other proxy. A refused login is not.
+void SipService::onRegistrationResult(const QString &id, bool active,
+                                      int code) {
+  if (active || !m_configs.contains(id) || m_proxyChoice.value(id) != 0)
+    return;
+  if (code != 408 && code != 502 && code != 503 && code != 504)
+    return;
+  const QVariantMap config = m_configs.value(id);
+  if (proxiesOf(config).size() < 2)
+    return;
+  qWarning() << id << "cannot register through its first proxy (" << code
+             << "), switching to the second";
+  m_proxyChoice[id] = 1;
+  applyAccount(id, config);
+  emit proxyChanged(id);
+}
+
+// Accounts that fell back to their second proxy go back to the first if it
+// answers now; otherwise they stay where they are.
+void SipService::recheckProxies() {
+  const QStringList ids = m_proxyChoice.keys();
+  for (const QString &id : ids) {
+    if (m_proxyChoice.value(id) != 1 || !m_configs.contains(id))
+      continue;
+    const QVariantMap config = m_configs.value(id);
+    const QString first = proxiesOf(config).value(0) + transportParamOf(config);
+    probeProxy(id, first, [this, id](bool reachable) {
+      if (!reachable || m_proxyChoice.value(id) != 1 || !m_configs.contains(id))
+        return;
+      qInfo() << id << "first proxy answers again, switching back to it";
+      m_proxyChoice[id] = 0;
+      applyAccount(id, m_configs.value(id));
+      emit proxyChanged(id);
+    });
+  }
+}
+
+void SipService::onNetworkChanged() {
+  if (!m_endpoint)
+    return;
+  try {
+    IpChangeParam prm;
+    m_endpoint->handleIpChange(prm);
+    qInfo() << "Network change handled, re-registering";
+  } catch (Error &err) {
+    qWarning() << "Error handling network change:"
+               << QString::fromStdString(err.info());
+  }
+  recheckProxies();
+}
+
+// Sends a SIP OPTIONS to `target` ("host:port;transport=..") and reports
+// whether anything answered. Any SIP response counts, even an error: it shows
+// the proxy is there.
+void SipService::probeProxy(const QString &id, const QString &target,
+                            std::function<void(bool)> done) {
+  // Decided once, on this thread, by whichever comes first: the response or
+  // our own time limit (PJSIP itself only gives up after 32 seconds)
+  auto decided = std::make_shared<bool>(false);
+  auto decide = [decided, done](bool reachable) {
+    if (*decided)
+      return;
+    *decided = true;
+    done(reachable);
+  };
+
+  const std::string to = ("sip:" + target).toStdString();
+  const std::string from = ("<sip:" + id + ">").toStdString();
+  pj_str_t pjTo = pj_str(const_cast<char *>(to.c_str()));
+  pj_str_t pjFrom = pj_str(const_cast<char *>(from.c_str()));
+  pjsip_endpoint *endpt = pjsua_get_pjsip_endpt();
+  pjsip_tx_data *tdata = nullptr;
+  pj_status_t status = pjsip_endpt_create_request(
+      endpt, pjsip_get_options_method(), &pjTo, &pjFrom, &pjTo, nullptr,
+      nullptr, -1, nullptr, &tdata);
+  if (status == PJ_SUCCESS) {
+    auto *token = new std::function<void(bool)>(decide);
+    status = pjsip_endpt_send_request(
+        endpt, tdata, -1, token, [](void *token, pjsip_event *event) {
+          // PJSIP thread
+          auto *report = static_cast<std::function<void(bool)> *>(token);
+          const int code = event->body.tsx_state.tsx->status_code;
+          const bool reachable = code != 408 && code != 502 && code != 503;
+          if (pjsua_get_state() != PJSUA_STATE_RUNNING) {
+            delete report; // shutting down
+            return;
+          }
+          QMetaObject::invokeMethod(
+              &SipService::instance(),
+              [report, reachable] {
+                (*report)(reachable);
+                delete report;
+              },
+              Qt::QueuedConnection);
+        });
+    if (status != PJ_SUCCESS)
+      delete token;
+  }
+  if (status != PJ_SUCCESS) {
+    decide(false);
+    return;
+  }
+
+  auto *limit = new QTimer(this);
+  limit->setSingleShot(true);
+  connect(limit, &QTimer::timeout, this, [decide, limit] {
+    limit->deleteLater();
+    decide(false);
+  });
+  limit->start(5000);
 }
 
 QString SipService::turnPassword() const {
@@ -63,7 +201,7 @@ void SipService::applyDeferredAccounts() {
     if (!m_accounts.contains(id)) {
       m_deferred.remove(id);
     } else if (!hasActiveCalls(id)) {
-      registerAccount(id, m_deferred.take(id));
+      applyAccount(id, m_deferred.take(id));
     }
   }
 }
@@ -370,17 +508,9 @@ void SipService::init() {
       connect(QNetworkInformation::instance(),
               &QNetworkInformation::reachabilityChanged, this,
               [this](QNetworkInformation::Reachability reachability) {
-                if (!m_endpoint ||
-                    reachability == QNetworkInformation::Reachability::Disconnected)
-                  return;
-                try {
-                  IpChangeParam prm;
-                  m_endpoint->handleIpChange(prm);
-                  qInfo() << "Network change handled, re-registering";
-                } catch (Error &err) {
-                  qWarning() << "Error handling network change:"
-                             << QString::fromStdString(err.info());
-                }
+                if (reachability !=
+                    QNetworkInformation::Reachability::Disconnected)
+                  onNetworkChanged();
               });
     }
 
@@ -418,7 +548,15 @@ void SipService::shutdown() {
   }
 }
 
+// A new or edited account starts on its first proxy
 void SipService::registerAccount(const QString &id, const QVariantMap &config) {
+  m_configs[id] = config;
+  m_proxyChoice[id] = 0;
+  applyAccount(id, config);
+}
+
+// Builds the PJSIP account from `config`, on whichever proxy it is using now
+void SipService::applyAccount(const QString &id, const QVariantMap &config) {
   if (!m_endpoint)
     return;
 
@@ -427,7 +565,9 @@ void SipService::registerAccount(const QString &id, const QVariantMap &config) {
     QString username = config["username"].toString();
     QString domain = config["domain"].toString();
     QString password = config["password"].toString();
-    QString proxy = config["proxy"].toString();
+    const QStringList proxies = proxiesOf(config);
+    const QString proxy =
+        proxies.value(qMin(m_proxyChoice.value(id), proxies.size() - 1));
 
     QString transport = config["transport"].toString().toLower();
     std::string transportParam = "";
@@ -564,6 +704,8 @@ void SipService::registerAccount(const QString &id, const QVariantMap &config) {
     // Only calls started with video carry a video stream (see answerCall)
     cfg.videoConfig.autoShowIncoming = true;
     cfg.videoConfig.autoTransmitOutgoing = true;
+    cfg.videoConfig.defaultCaptureDevice =
+        HardwareService::instance().selectedVideoDevice();
 
     auto existing = m_accounts.value(id);
     if (existing && hasActiveCalls(id)) {
@@ -608,6 +750,8 @@ void SipService::unregisterAccount(const QString &id) {
   if (m_accounts.contains(id)) {
     BlfService::instance().unsubscribe(id);
     m_deferred.remove(id);
+    m_configs.remove(id);
+    m_proxyChoice.remove(id);
     runOnSipThread([this, &id] {
       BuddyService::instance().clear();
       m_accounts.remove(id); // ~Account unregisters and deletes the account

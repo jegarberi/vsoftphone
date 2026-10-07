@@ -141,6 +141,7 @@ Item {
             displayNameField.text = data["displayName"] || ""
             serverField.text = data["server"] || ""
             proxyField.text = data["proxy"] || ""
+            proxy2Field.text = data["proxy2"] || ""
             transportCombo.currentIndex = Math.max(0, transportCombo.model.indexOf(data["transport"]))
             ipVersionCombo.currentIndex = adding ? 2 : data["ipVersion"]
             refreshSpin.value = adding ? 300 : data["registerRefresh"]
@@ -166,6 +167,7 @@ Item {
                 "accountName": accountNameField.text,
                 "server": serverField.text,
                 "proxy": proxyField.text,
+                "proxy2": proxy2Field.text,
                 "username": usernameField.text,
                 "domain": domainField.text,
                 "login": loginField.text,
@@ -217,6 +219,7 @@ Item {
                 Heading { text: "SERVER" }
                 TextField { id: serverField; placeholderText: "SIP server, if different from the domain"; Layout.fillWidth: true }
                 TextField { id: proxyField; placeholderText: "Outbound proxy (optional)"; Layout.fillWidth: true }
+                TextField { id: proxy2Field; placeholderText: "Second proxy, used when the first fails"; Layout.fillWidth: true; visible: proxyField.text.trim() !== "" || text !== "" }
                 RowLayout {
                     Layout.fillWidth: true
                     Label { text: "Transport"; Layout.fillWidth: true }

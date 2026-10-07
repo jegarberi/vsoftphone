@@ -31,7 +31,8 @@ static QVariantMap toMap(const AccountRecord &a) {
           {"enableStun", a.enableStun},
           {"ipVersion", a.ipVersion},
           {"rport", a.rport},
-          {"blfUri", a.blfUri}};
+          {"blfUri", a.blfUri},
+          {"proxy2", a.proxy2}};
 }
 
 // Everything the dialog edits; id and active are left alone
@@ -59,6 +60,7 @@ static void fromMap(const QVariantMap &d, AccountRecord &a) {
   a.ipVersion = d["ipVersion"].toInt();
   a.rport = d["rport"].toBool();
   a.blfUri = d["blfUri"].toString().trimmed();
+  a.proxy2 = d["proxy2"].toString().trimmed();
 }
 
 AccountModel &AccountModel::instance() {
@@ -73,6 +75,8 @@ AccountModel::AccountModel(QObject *parent) : QAbstractListModel(parent) {
             QString status = active ? "Registered"
                              : code ? QString("%1 %2").arg(code).arg(text)
                                     : text;
+            if (active && SipService::instance().usingBackupProxy(id))
+              status += " (second proxy)";
             for (int i = 0; i < m_accounts.count(); ++i) {
               if (keyOf(m_accounts[i]) != id)
                 continue;

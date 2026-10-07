@@ -5,6 +5,7 @@
 #include <QObject>
 #include <QVariantMap>
 #include <atomic>
+#include <functional>
 #include <memory>
 #include <pjsua2.hpp>
 
@@ -114,6 +115,8 @@ public:
   void setMediaRport(bool v) { setNet("mediaRport", v, false); }
   // Re-registers the active accounts if a network setting changed
   Q_INVOKABLE void applyNetworkSettings();
+  // Something else the accounts are built from changed (the camera)
+  void markAccountsChanged() { m_networkDirty = true; }
 
   // Whether calls addressed to our IP address rather than an account ring
   bool acceptIpCalls() const { return m_acceptIpCalls; }
@@ -122,6 +125,17 @@ public:
   bool hasActiveCalls(const QString &id) const;
   // Rebuilds accounts whose changes had to wait for a call to end
   void applyDeferredAccounts();
+
+  // Outbound proxy failover. An account starts on its first proxy; when
+  // registering through it fails it moves to the second and stays there.
+  // After a network change the first is probed with a SIP OPTIONS, and the
+  // account goes back to it only if it answers.
+  bool usingBackupProxy(const QString &id) const {
+    return m_proxyChoice.value(id) == 1;
+  }
+  void recheckProxies();
+  // Tells PJSIP the addresses changed, then rechecks the proxies
+  void onNetworkChanged();
 
   QList<std::shared_ptr<MyAccount>> getAccounts() const {
     return m_accounts.values();
@@ -141,6 +155,7 @@ signals:
   void callHandlingChanged();
   void networkSettingsChanged();
   void networkSettingsApplied();
+  void proxyChanged(QString id);
 
 private:
   explicit SipService(QObject *parent = nullptr);
@@ -148,6 +163,15 @@ private:
 
   SipService(const SipService &) = delete;
   SipService &operator=(const SipService &) = delete;
+
+  void applyAccount(const QString &id, const QVariantMap &config);
+  void onRegistrationResult(const QString &id, bool active, int code);
+  void probeProxy(const QString &id, const QString &target,
+                  std::function<void(bool)> done);
+  // The last configuration given for each account, and which of its
+  // proxies (0 or 1) it is on
+  QMap<QString, QVariantMap> m_configs;
+  QMap<QString, int> m_proxyChoice;
 
   QVariant net(const char *key, const QVariant &fallback) const;
   void setNet(const char *key, const QVariant &value,

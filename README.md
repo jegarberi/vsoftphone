@@ -12,6 +12,8 @@ on Linux, with a cross-compiled Windows build.
   default), with registration status
 - Calls: answer, hold/resume, mute, DTMF, blind transfer, conference,
   recording to WAV, ring tone, Do Not Disturb, auto answer
+- Outbound proxy failover: a second proxy takes over when the first fails,
+  and the first is tried again after a network change
 - Direct IP calls (dial an IP address, with or without an account)
 - BroadWorks busy lamp fields: set the BLF list URI on the account and the
   monitored users appear in Contacts as Idle, Ringing or Busy
@@ -31,8 +33,8 @@ on Linux, with a cross-compiled Windows build.
   Windows. Where there is none they stay unencrypted in the local SQLite
   database (the file is readable by the owner only)
 - "IPv6 only" accounts use IPv6 signalling over UDP only
-- Busy lamp fields are tested against a stand-in for a BroadWorks server
-  inside the test, not against a real one
+- Busy lamp fields are tested against Asterisk's resource lists and a
+  stand-in for a BroadWorks server, not against BroadWorks itself
 - Windows is cross-compiled and tested under wine only; the macOS build
   target exists but has never been built
 - No in-call file transfer; no Android or iOS builds
