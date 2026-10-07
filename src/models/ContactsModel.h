@@ -3,13 +3,14 @@
 
 #include <QAbstractListModel>
 #include <QList>
+#include <QMap>
 
 struct Contact {
   QString id;
   QString name;
   QString number;
   QString group;
-  QString status; // Online, Offline
+  QString status; // Online, Offline, or a lamp: Idle, Ringing, Busy
 };
 
 class ContactsModel : public QAbstractListModel {
@@ -34,13 +35,24 @@ public:
                               const QString &group = QString());
   Q_INVOKABLE void removeContact(int index);
   void updateContactStatus(const QString &number, const QString &status);
+  // Busy lamp state of a monitored user. Sets the status of the matching
+  // contact, or lists the user under "BLF" when there is no such contact.
+  void updateLamp(const QString &uri, const QString &name,
+                  const QString &state);
 
 private:
   explicit ContactsModel(QObject *parent = nullptr);
   void reload();
   void subscribePresence();
 
+  int applyLamp(const QString &uri);
+
   QList<Contact> m_contacts;
+  struct Lamp {
+    QString name;
+    QString state;
+  };
+  QMap<QString, Lamp> m_lamps; // bare "user@domain" -> last known state
 };
 
 #endif // CONTACTSMODEL_H

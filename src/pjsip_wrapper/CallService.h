@@ -53,6 +53,8 @@ signals:
   void callStateChanged(int callId, QString state, int status = 0,
                         QString reason = "");
   void callMediaStateChanged(int callId, bool hasVideo);
+  // The call could not even be started (no account, malformed address)
+  void callFailed(QString destination, QString reason);
 
 private:
   explicit CallService(QObject *parent = nullptr);

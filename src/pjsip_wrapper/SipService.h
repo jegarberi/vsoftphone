@@ -52,6 +52,8 @@ public:
   std::shared_ptr<MyAccount> getAccount(const QString &id) {
     return m_accounts.value(id);
   }
+  // Unregistered account for direct IP calls; exists even with no SIP account
+  std::shared_ptr<MyAccount> localAccount() { return m_localAccount; }
   pj::Endpoint *endpoint() { return m_endpoint; }
 
   bool doNotDisturb() const { return m_doNotDisturb; }
@@ -90,6 +92,7 @@ private:
   pj::TransportId m_tcpTransportId = PJSUA_INVALID_ID;
   pj::TransportId m_tlsTransportId = PJSUA_INVALID_ID;
   QMap<QString, std::shared_ptr<MyAccount>> m_accounts;
+  std::shared_ptr<MyAccount> m_localAccount;
 };
 
 #endif // SIPSERVICE_H

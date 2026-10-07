@@ -26,6 +26,16 @@ ApplicationWindow {
     }
     
     
+    Dialog {
+        id: callFailedDialog
+        property alias text: callFailedLabel.text
+        title: "Call failed"
+        standardButtons: Dialog.Ok
+        modal: true
+        anchors.centerIn: parent
+        Label { id: callFailedLabel; wrapMode: Text.Wrap }
+    }
+
     // Call handling connections
     Connections {
         target: callService
@@ -38,6 +48,10 @@ ApplicationWindow {
                 "isIncoming": true
             })
             win.show()
+        }
+        function onCallFailed(destination, reason) {
+            callFailedDialog.text = "Could not call " + destination + ": " + reason
+            callFailedDialog.open()
         }
         function onOutgoingCall(callId, remoteUri) {
             var component = Qt.createComponent("InCallWindow.qml")

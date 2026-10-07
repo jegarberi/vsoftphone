@@ -44,7 +44,7 @@ Item {
                         font.family: Theme.fontFamily
                         font.pixelSize: 32
                         font.weight: Font.Medium
-                        placeholderText: "Enter number..."
+                        placeholderText: "Number, user@host or IP address"
                         horizontalAlignment: TextInput.AlignRight
                         color: Theme.textPrimary
                         background: Item {}

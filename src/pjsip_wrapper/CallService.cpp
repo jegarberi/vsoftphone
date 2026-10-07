@@ -123,22 +123,27 @@ CallService::~CallService() {}
 
 void CallService::makeCall(const QString &accountId,
                            const QString &destination, bool video) {
-  auto acc = SipService::instance().getAccount(accountId);
+  // An IP address as host is a direct call: it bypasses the account's
+  // registrar and proxy and needs no account at all. Anything else goes
+  // through the account, a bare user getting its domain ("user@domain").
+  QString rawDest = bareSipUri(destination);
+  const bool ipCall = hasIpHost(rawDest);
+  auto acc = ipCall ? SipService::instance().localAccount()
+                    : SipService::instance().getAccount(accountId);
   if (!acc) {
-    qWarning() << "Account not found:" << accountId;
+    qWarning() << "No account to call" << destination << "with:" << accountId;
+    emit callFailed(destination, ipCall ? "IP calls are unavailable"
+                                        : "No active account");
     return;
   }
+  if (!ipCall && !rawDest.contains('@'))
+    rawDest += accountId.mid(accountId.indexOf('@'));
+  const QString dest = "<sip:" + rawDest + ">";
 
   auto call = std::make_shared<MyCall>(*acc);
   CallOpParam prm(true);
   prm.opt.audioCount = 1;
   prm.opt.videoCount = video ? 1 : 0;
-
-  // Bare user gets the account's domain (accountId is "user@domain")
-  QString rawDest = bareSipUri(destination);
-  if (!rawDest.contains('@'))
-    rawDest += accountId.mid(accountId.indexOf('@'));
-  const QString dest = "<sip:" + rawDest + ">";
 
   qInfo() << "Making call to:" << dest;
 
@@ -151,6 +156,7 @@ void CallService::makeCall(const QString &accountId,
     emit outgoingCall(m_lastCallId, destination);
   } catch (Error &err) {
     qCritical() << "Error making call:" << QString::fromStdString(err.info());
+    emit callFailed(destination, QString::fromStdString(err.reason));
   }
 }
 

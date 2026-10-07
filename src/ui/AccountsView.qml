@@ -112,6 +112,7 @@ Item {
                     }
                 }
 
+                TextField { id: blfField; placeholderText: "BLF list URI (BroadWorks busy lamp field)"; Layout.fillWidth: true }
                 CheckBox { id: presenceCheck; text: "Publish Presence" }
                 CheckBox { id: enableStunCheck; text: "Enable STUN" }
                 TextField { id: stunField; placeholderText: "STUN Server (host:port)"; Layout.fillWidth: true; visible: enableStunCheck.checked }
@@ -156,6 +157,7 @@ Item {
                 ipVersionCombo.currentIndex = data["ipVersion"]
 
                 refreshSpin.value = data["registerRefresh"]
+                blfField.text = data["blfUri"]
                 presenceCheck.checked = data["publishPresence"]
                 enableStunCheck.checked = data["enableStun"]
                 iceCheck.checked = data["ice"]
@@ -178,6 +180,7 @@ Item {
                 transportCombo.currentIndex = 0
                 ipVersionCombo.currentIndex = 2
                 refreshSpin.value = 300
+                blfField.text = ""
                 presenceCheck.checked = false
                 enableStunCheck.checked = true
                 iceCheck.checked = false
@@ -202,6 +205,7 @@ Item {
                 "ipVersion": ipVersionCombo.currentIndex,
                 "registerRefresh": refreshSpin.value,
                 "publishPresence": presenceCheck.checked,
+                "blfUri": blfField.text,
                 "enableStun": enableStunCheck.checked,
                 "ice": iceCheck.checked,
                 "stunServer": stunField.text,

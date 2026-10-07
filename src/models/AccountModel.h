@@ -7,33 +7,7 @@
 #include <QString>
 #include <QVariantMap>
 
-struct Account {
-  QString id;
-  QString accountName;
-  QString server;
-  QString proxy;
-  QString username;
-  QString domain;
-  QString login;
-  QString password;
-  QString displayName;
-  QString transport; // UDP, TCP, TLS
-  int registerRefresh;
-  bool publishPresence;
-  bool ice;
-  QString stunServer;
-  QString turnServer;
-  QString turnUser;
-  QString turnPass;
-  int srtpMode; // 0:Disabled, 1:Optional, 2:Mandatory
-  bool allowIpRewrite;
-  bool autoNat;
-
-  bool enableStun;
-  int ipVersion;
-  bool rport;
-  bool active;
-};
+#include "../pjsip_wrapper/StorageService.h"
 
 class AccountModel : public QAbstractListModel {
   Q_OBJECT
@@ -66,6 +40,7 @@ public:
     IpVersionRole,
     RportRole,
     ActiveRole,
+    BlfUriRole,
     StatusRole
   };
 
@@ -91,7 +66,7 @@ signals:
   void defaultAccountIdChanged();
 
 private:
-  QList<Account> m_accounts;
+  QList<AccountRecord> m_accounts;
   QString m_selectedId; // preferred account; falls back to the first active
   QHash<QString, QString> m_status; // "user@domain" -> registration status
 };

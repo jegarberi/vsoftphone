@@ -8,6 +8,9 @@ Linux.
 - Multiple SIP accounts over UDP, TCP or TLS, with registration status
 - Calls: answer, hold/resume, mute, DTMF, blind transfer, conference,
   recording to WAV, ring tone, Do Not Disturb, auto answer
+- Direct IP calls (dial an IP address, with or without an account)
+- BroadWorks busy lamp fields: set the BLF list URI on the account and the
+  monitored users appear in Contacts as Idle, Ringing or Busy
 - NAT traversal per account: STUN, ICE, and TURN relay when direct media is
   not possible; optional SRTP
 - Instant messages with typing indication, stored in SQLite

@@ -102,7 +102,8 @@ bool StorageService::createTables() {
                         "enableStun BOOLEAN DEFAULT 1,"
                         "ipVersion INTEGER DEFAULT 2,"
                         "rport BOOLEAN DEFAULT 0,"
-                        "active BOOLEAN)");
+                        "active BOOLEAN,"
+                        "blfUri TEXT DEFAULT '')");
 
   // Migration for existing databases
   query.exec(
@@ -113,6 +114,7 @@ bool StorageService::createTables() {
   query.exec("ALTER TABLE accounts ADD COLUMN ipVersion INTEGER DEFAULT 2");
   query.exec("ALTER TABLE accounts ADD COLUMN rport BOOLEAN DEFAULT 0");
   query.exec("ALTER TABLE contacts ADD COLUMN grp TEXT DEFAULT ''");
+  query.exec("ALTER TABLE accounts ADD COLUMN blfUri TEXT DEFAULT ''");
 
   if (!success) {
     qCritical() << "Error creating tables:" << query.lastError().text();
@@ -226,9 +228,9 @@ void StorageService::addAccount(const AccountRecord &acc) {
       "domain, login, password, displayName, transport, registerRefresh, "
       "publishPresence, iceEnabled, stunServer, turnServer, "
       "turnUser, turnPass, srtpMode, allowIpRewrite, autoNat, enableStun, "
-      "ipVersion, rport, active) VALUES "
+      "ipVersion, rport, active, blfUri) VALUES "
       "(:an, :sv, :px, :un, :dn, :ln, :pw, :dn_name, :tr, :rr, :pp, :ie, "
-      ":ss, :ts, :tu, :tp, :sm, :ar, :anat, :estun, :ipv, :rp, :ac)");
+      ":ss, :ts, :tu, :tp, :sm, :ar, :anat, :estun, :ipv, :rp, :ac, :blf)");
   query.bindValue(":an", acc.accountName);
   query.bindValue(":sv", acc.server);
   query.bindValue(":px", acc.proxy);
@@ -253,6 +255,7 @@ void StorageService::addAccount(const AccountRecord &acc) {
   query.bindValue(":ipv", acc.ipVersion);
   query.bindValue(":rp", acc.rport);
   query.bindValue(":ac", acc.active);
+  query.bindValue(":blf", acc.blfUri);
 
   if (!query.exec()) {
     qWarning() << "Error adding account:" << query.lastError().text();
@@ -268,7 +271,8 @@ void StorageService::updateAccount(const AccountRecord &acc) {
       "transport=:tr, registerRefresh=:rr, publishPresence=:pp, "
       "iceEnabled=:ie, stunServer=:ss, turnServer=:ts, turnUser=:tu, "
       "turnPass=:tp, srtpMode=:sm, allowIpRewrite=:ar, "
-      "autoNat=:anat, enableStun=:estun, ipVersion=:ipv, rport=:rp, active=:ac "
+      "autoNat=:anat, enableStun=:estun, ipVersion=:ipv, rport=:rp, active=:ac, "
+      "blfUri=:blf "
       "WHERE id=:id");
   query.bindValue(":an", acc.accountName);
   query.bindValue(":sv", acc.server);
@@ -294,6 +298,7 @@ void StorageService::updateAccount(const AccountRecord &acc) {
   query.bindValue(":ipv", acc.ipVersion);
   query.bindValue(":rp", acc.rport);
   query.bindValue(":ac", acc.active);
+  query.bindValue(":blf", acc.blfUri);
   query.bindValue(":id", acc.id);
 
   if (!query.exec()) {
@@ -318,7 +323,7 @@ QList<AccountRecord> StorageService::getAccounts() {
       "password, displayName, transport, registerRefresh, "
       "publishPresence, iceEnabled, stunServer, turnServer, "
       "turnUser, turnPass, srtpMode, allowIpRewrite, autoNat, enableStun, "
-      "ipVersion, rport, active "
+      "ipVersion, rport, active, blfUri "
       "FROM accounts");
   if (query.exec()) {
     while (query.next()) {
@@ -347,6 +352,7 @@ QList<AccountRecord> StorageService::getAccounts() {
       rec.ipVersion = query.value(21).toInt();
       rec.rport = query.value(22).toBool();
       rec.active = query.value(23).toBool();
+      rec.blfUri = query.value(24).toString();
       list.append(rec);
     }
   }

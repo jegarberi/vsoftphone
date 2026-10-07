@@ -41,6 +41,7 @@ struct AccountRecord {
   int ipVersion; // 0:IPv4, 1:IPv6, 2:Auto
   bool rport;
   bool active;
+  QString blfUri; // BroadWorks busy lamp field list URI
 };
 
 struct ContactRecord {

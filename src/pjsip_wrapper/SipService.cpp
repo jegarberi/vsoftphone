@@ -1,4 +1,5 @@
 #include "SipService.h"
+#include "BlfService.h"
 #include "BuddyService.h"
 #include "CallService.h"
 #include "HardwareService.h"
@@ -145,6 +146,26 @@ void SipService::init() {
 
     HardwareService::instance().applyCodecPriorities();
 
+    // Local account: no registrar, identified by our own address. Direct IP
+    // calls go out through it, and calls addressed to our IP come in on it.
+    try {
+      pjsua_transport_info ti;
+      pjsua_transport_get_info(m_udpTransportId, &ti);
+      AccountConfig local;
+      local.idUri =
+          "<sip:" +
+          std::string(ti.local_name.host.ptr, ti.local_name.host.slen) + ":" +
+          std::to_string(ti.local_name.port) + ">";
+      local.videoConfig.autoShowIncoming = true;
+      local.videoConfig.autoTransmitOutgoing = true;
+      m_localAccount = std::make_shared<MyAccount>();
+      m_localAccount->create(local);
+    } catch (Error &err) {
+      m_localAccount.reset();
+      qWarning() << "Could not create local account for IP calls:"
+                 << QString::fromStdString(err.info());
+    }
+
     // Re-register and refresh transports when the network comes back.
     // ponytail: only sees reachability transitions, not an address change
     // while staying online; watch QNetworkInterface if that turns out to matter.
@@ -186,6 +207,7 @@ void SipService::init() {
 void SipService::shutdown() {
   if (m_endpoint) {
     try {
+      m_localAccount.reset();
       m_accounts.clear(); // Ensure accounts are deleted before endpoint
       m_endpoint->libDestroy();
     } catch (Error &err) {
@@ -205,6 +227,7 @@ void SipService::registerAccount(const QString &id, const QVariantMap &config) {
     if (m_accounts.contains(id)) {
       // An account deletes the buddies attached to it, so release ours first
       BuddyService::instance().clear();
+      BlfService::instance().unsubscribe(id);
       m_accounts.remove(id);
     }
 
@@ -367,6 +390,7 @@ void SipService::registerAccount(const QString &id, const QVariantMap &config) {
     m_accounts[id] = acc;
 
     qDebug() << "Registered account:" << id;
+    BlfService::instance().subscribe(id, config["blfUri"].toString());
 
   } catch (Error &err) {
     qCritical() << "Error registering account:"
@@ -379,6 +403,7 @@ void SipService::registerAccount(const QString &id, const QVariantMap &config) {
 void SipService::unregisterAccount(const QString &id) {
   if (m_accounts.contains(id)) {
     BuddyService::instance().clear();
+    BlfService::instance().unsubscribe(id);
     m_accounts.remove(id); // ~Account unregisters and deletes the account
     qDebug() << "Unregistered account:" << id;
     emit accountStateChanged(id, false, 0, "Unregistered");
@@ -386,6 +411,8 @@ void SipService::unregisterAccount(const QString &id) {
 }
 
 void MyAccount::onRegState(pj::OnRegStateParam &prm) {
+  if (key.isEmpty()) // local account
+    return;
   AccountInfo ai = getInfo();
   qDebug() << (ai.regIsActive ? "*** Register:" : "*** Unregister:")
            << " code=" << prm.code;

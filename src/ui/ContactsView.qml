@@ -42,7 +42,10 @@ Item {
                     }
                     Label {
                         text: model.status
-                        color: model.status === "Online" ? "green" : "gray"
+                        color: model.status === "Busy" ? "red"
+                             : model.status === "Ringing" ? "orange"
+                             : (model.status === "Online" || model.status === "Idle") ? "green"
+                             : "gray"
                     }
                     Button {
                         text: "Call"

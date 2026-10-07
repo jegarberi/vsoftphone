@@ -22,8 +22,10 @@
 #include "models/ContactsModel.h"
 #include "models/HistoryModel.h"
 #include "models/MessageModel.h"
+#include "pjsip_wrapper/BlfService.h"
 #include "pjsip_wrapper/CallService.h"
 #include "pjsip_wrapper/SipService.h"
+#include "pjsip_wrapper/SipUri.h"
 #include "pjsip_wrapper/StorageService.h"
 
 #define CHECK(cond)                                                            \
@@ -134,6 +136,51 @@ int main(int argc, char *argv[]) {
   QDir(dataDir).removeRecursively();
   QSettings().clear();
 
+  // --- address classification ------------------------------------------------
+  CHECK(hasIpHost("10.0.0.5") && hasIpHost("bob@10.0.0.5:5080"));
+  CHECK(hasIpHost("[fe80::1]:5060"));
+  CHECK(!hasIpHost("1001") && !hasIpHost("bob@pbx.example.com"));
+  CHECK(!hasIpHost("1001@pbx.example.com:5060"));
+
+  // --- BroadWorks BLF NOTIFY: resource list of dialog-info documents ---------
+  {
+    const QByteArray body =
+        "--b1\r\nContent-Type: application/rlmi+xml;charset=\"UTF-8\"\r\n"
+        "Content-ID: <list>\r\n\r\n"
+        "<?xml version=\"1.0\"?><list xmlns=\"urn:ietf:params:xml:ns:rlmi\" "
+        "uri=\"sip:myblf@as.example.com\" version=\"1\" fullState=\"true\">"
+        "<resource uri=\"sip:2001@as.example.com\"><name>Alice A</name>"
+        "<instance id=\"a\" state=\"active\" cid=\"c1\"/></resource>"
+        "<resource uri=\"sip:2002@as.example.com\"><name>Bob B</name>"
+        "<instance id=\"b\" state=\"active\" cid=\"c2\"/></resource>"
+        "<resource uri=\"sip:2003@as.example.com\">"
+        "<instance id=\"c\" state=\"active\" cid=\"c3\"/></resource></list>\r\n"
+        "--b1\r\nContent-Type: application/dialog-info+xml\r\n"
+        "Content-ID: <c1>\r\n\r\n"
+        "<dialog-info xmlns=\"urn:ietf:params:xml:ns:dialog-info\" version=\"0\" "
+        "state=\"full\" entity=\"sip:2001@as.example.com\"><dialog id=\"x\" "
+        "direction=\"recipient\"><state>confirmed</state></dialog></dialog-info>"
+        "\r\n--b1\r\nContent-Type: application/dialog-info+xml\r\n\r\n"
+        "<dialog-info xmlns=\"urn:ietf:params:xml:ns:dialog-info\" version=\"0\" "
+        "state=\"full\" entity=\"sip:2002@as.example.com\"><dialog id=\"y\">"
+        "<state>early</state></dialog></dialog-info>\r\n"
+        "--b1\r\nContent-Type: application/dialog-info+xml\r\n\r\n"
+        "<dialog-info xmlns=\"urn:ietf:params:xml:ns:dialog-info\" version=\"0\" "
+        "state=\"full\" entity=\"sip:2003@as.example.com\"/>\r\n--b1--\r\n";
+    const QList<BlfLamp> lamps = BlfService::parseNotify("b1", body);
+    CHECK(lamps.size() == 3);
+    CHECK(lamps[0].uri == "2001@as.example.com" && lamps[0].state == "Busy");
+    CHECK(lamps[0].name == "Alice A");
+    CHECK(lamps[1].uri == "2002@as.example.com" && lamps[1].state == "Ringing");
+    CHECK(lamps[2].state == "Idle" && lamps[2].name.isEmpty());
+
+    // A single-user subscription gets a bare dialog-info body
+    const QList<BlfLamp> single = BlfService::parseNotify(
+        "", "<dialog-info entity=\"sip:2009@x.org\" state=\"full\"><dialog "
+            "id=\"z\"><state>terminated</state></dialog></dialog-info>");
+    CHECK(single.size() == 1 && single[0].state == "Idle");
+  }
+
   CHECK(StorageService::instance().init());
   SipService &sip = SipService::instance();
   sip.init();
@@ -164,9 +211,27 @@ int main(int argc, char *argv[]) {
 
   // --- contacts and presence subscription ----------------------------------
   ContactsModel &contacts = ContactsModel::instance();
-  contacts.addContact("Tester", "tester", "Team");
+  // The contact lives on a port nobody answers: subscribing to ourselves can
+  // deadlock PJSIP when the account is then deleted mid-SUBSCRIBE.
+  contacts.addContact("Alice", "2001@127.0.0.1:9", "Team");
   CHECK(contacts.rowCount() == 1);
   CHECK(contacts.data(contacts.index(0), ContactsModel::GroupRole) == "Team");
+
+  // --- busy lamps: a stored contact shows its lamp, unknown users get a row --
+  emit BlfService::instance().lampChanged("2001@127.0.0.1:9", "Alice A", "Busy");
+  emit BlfService::instance().lampChanged("2002@as.example.com", "Bob B",
+                                          "Ringing");
+  CHECK(contacts.rowCount() == 2);
+  CHECK(contacts.data(contacts.index(0), ContactsModel::StatusRole) == "Busy");
+  CHECK(contacts.data(contacts.index(1), ContactsModel::NameRole) == "Bob B");
+  CHECK(contacts.data(contacts.index(1), ContactsModel::GroupRole) == "BLF");
+  CHECK(contacts.data(contacts.index(1), ContactsModel::StatusRole) == "Ringing");
+
+  // --- BLF subscription goes out and a refusal is survived ------------------
+  // Nothing here serves the dialog event, so the SUBSCRIBE is rejected.
+  account["blfUri"] = "myblf";
+  accounts.updateAccount(0, account);
+  pump(500);
 
   // --- answered call: mute, hold, resume, record, DTMF ---------------------
   CallService &callService = CallService::instance();
@@ -334,9 +399,24 @@ int main(int argc, char *argv[]) {
   accounts.removeAccount(0);
   CHECK(accounts.rowCount() == 0);
   CHECK(!sip.getAccount(accountId));
+  contacts.removeContact(1); // server-provided BLF row: not removable
+  CHECK(contacts.rowCount() == 2);
   contacts.removeContact(0);
-  CHECK(contacts.rowCount() == 0);
+  CHECK(contacts.rowCount() == 1);
   pump(200);
+
+  // --- direct IP call with no SIP account at all ---------------------------
+  CHECK(accounts.defaultAccountId().isEmpty());
+  int failures = 0;
+  QObject::connect(&callService, &CallService::callFailed, &app,
+                   [&] { ++failures; });
+  callService.makeCall("", "1001"); // not an address and no account: refused
+  CHECK(failures == 1);
+  callService.makeCall("", "sip:" + domain); // our own "127.0.0.1:port"
+  CHECK(waitFor([] { return allConfirmed(2); }));
+  CHECK(failures == 1);
+  callService.hangupCall(callId(0));
+  CHECK(waitFor([] { return CallModel::instance().rowCount() == 0; }));
 
   std::puts("call_flow_test: ALL OK");
   return 0; // normal exit also exercises the shutdown order

@@ -19,6 +19,7 @@ add_library(microsip_core STATIC
     src/pjsip_wrapper/CallService.cpp
     src/pjsip_wrapper/PresenceService.cpp
     src/pjsip_wrapper/BuddyService.cpp
+    src/pjsip_wrapper/BlfService.cpp
     src/pjsip_wrapper/StorageService.cpp
     src/models/AccountModel.cpp
     src/models/ContactsModel.cpp
@@ -64,3 +65,5 @@ enable_testing()
 add_executable(call_flow_test tests/call_flow_test.cpp src/resources.qrc)
 target_link_libraries(call_flow_test PRIVATE microsip_core)
 add_test(NAME call_flow COMMAND call_flow_test)
+# A hang must fail the run instead of blocking it
+set_tests_properties(call_flow PROPERTIES TIMEOUT 180)
