@@ -87,6 +87,8 @@ private:
   int m_captureIndex = 0; // positions in the lists exposed to QML
   int m_playbackIndex = 0;
   int m_videoIndex = 0;
+  mutable bool m_speakerVolumeUnsupported = false;
+  mutable bool m_micVolumeUnsupported = false;
   QString m_savedVideoDevice; // what the accounts were last built with
   QStringList m_audioPlaybackDevices;
   QStringList m_audioCaptureDevices;

@@ -627,6 +627,16 @@ int main(int argc, char *argv[]) {
       CHECK(cfg.vid_cap_dev != PJMEDIA_VID_DEFAULT_CAPTURE_DEV);
     });
 
+    // MICROSIP_TEST_DEFAULT_CAMERA=1 also previews "System default", which
+    // switches a real camera on for a moment; off unless asked
+    if (qEnvironmentVariableIsSet("MICROSIP_TEST_DEFAULT_CAMERA")) {
+      hardware.startVideoPreview(0);
+      pump(1000);
+      std::printf("call_flow_test: default camera preview %s\n",
+                  hardware.videoPreviewActive() ? "verified" : "not started");
+      hardware.stopVideoPreview();
+    }
+
     hardware.startVideoPreview(colorbar);
     const bool previewed = hardware.videoPreviewActive();
     pump(300);

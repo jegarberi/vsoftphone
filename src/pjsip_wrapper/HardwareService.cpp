@@ -299,49 +299,44 @@ void HardwareService::startVideoPreview(int devIdx) {
       return;
     }
     devIdx = m_videoDeviceIndices[devIdx];
-
-    m_videoPreview = new VideoPreview(devIdx);
-    VideoPreviewOpParam prm;
-    prm.rendId = PJMEDIA_VID_DEFAULT_RENDER_DEV;
-
-    // Explicitly set window type for Linux
-    prm.window.type = PJMEDIA_VID_DEV_HWND_TYPE_NONE;
-
-    // Try to find a native format to avoid assertion failure in vid_port.c
-    try {
-      VidDevManager &mgr = m_endpoint->vidDevManager();
-      if (devIdx < 0)
-        throw Error(); // the default camera: let PJSIP pick its format
-      VideoDevInfo devInfo = mgr.getDevInfo(devIdx);
-      if (!devInfo.fmt.empty()) {
-        const MediaFormatVideo *chosen = nullptr;
-        // Prefer some common formats
-        pj_uint32_t preferred[] = {PJMEDIA_FORMAT_I420, PJMEDIA_FORMAT_YUY2,
-                                   PJMEDIA_FORMAT_RGB24};
-        for (auto id : preferred) {
-          for (const auto &fmt : devInfo.fmt) {
-            if (fmt.id == id) {
-              chosen = &fmt;
-              break;
-            }
-          }
-          if (chosen)
-            break;
-        }
-        if (!chosen)
-          chosen = &devInfo.fmt[0];
-
-        prm.format.id = chosen->id;
-        prm.format.type = PJMEDIA_TYPE_VIDEO;
-        prm.format.width = chosen->width;
-        prm.format.height = chosen->height;
-        prm.format.fpsNum = chosen->fpsNum;
-        prm.format.fpsDenum = chosen->fpsDenum;
-      }
-    } catch (...) {
-      // Fallback or ignore
+    // "System default" is previewed as the first real camera: the preview
+    // needs a concrete device to take a picture format from
+    for (int candidate : m_videoDeviceIndices) {
+      if (devIdx < 0 && candidate >= 0)
+        devIdx = candidate;
+    }
+    if (devIdx < 0) {
+      qWarning() << "HardwareService: no camera to preview";
+      return;
     }
 
+    VideoPreviewOpParam prm;
+    prm.rendId = PJMEDIA_VID_DEFAULT_RENDER_DEV;
+    prm.window.type = PJMEDIA_VID_DEV_HWND_TYPE_NONE;
+
+    // PJSIP aborts on a preview without a picture format, so one of the
+    // camera's own formats is always given, a common one if it has it
+    const VideoDevInfo devInfo = m_endpoint->vidDevManager().getDevInfo(devIdx);
+    if (devInfo.fmt.empty()) {
+      qWarning() << "HardwareService: camera" << devIdx << "reports no formats";
+      return;
+    }
+    const MediaFormatVideo *chosen = &devInfo.fmt[0];
+    for (pj_uint32_t id : {PJMEDIA_FORMAT_RGB24, PJMEDIA_FORMAT_YUY2,
+                           PJMEDIA_FORMAT_I420}) {
+      for (const auto &fmt : devInfo.fmt) {
+        if (fmt.id == id)
+          chosen = &fmt; // the last one listed above that matches wins
+      }
+    }
+    prm.format.id = chosen->id;
+    prm.format.type = PJMEDIA_TYPE_VIDEO;
+    prm.format.width = chosen->width;
+    prm.format.height = chosen->height;
+    prm.format.fpsNum = chosen->fpsNum;
+    prm.format.fpsDenum = chosen->fpsDenum;
+
+    m_videoPreview = new VideoPreview(devIdx);
     m_videoPreview->start(prm);
     emit videoPreviewChanged();
     qDebug() << "HardwareService: Video preview started for device" << devIdx;
@@ -369,12 +364,15 @@ void HardwareService::stopVideoPreview() {
 }
 
 float HardwareService::speakerVolume() const {
-  if (!m_endpoint)
+  if (!m_endpoint || m_speakerVolumeUnsupported)
     return 1.0f;
   try {
     unsigned vol = m_endpoint->audDevManager().getOutputVolume();
     return vol / 100.0f;
   } catch (...) {
+    // Many devices have no level control. PJSIP logs an error each time it
+    // is asked, so ask once.
+    m_speakerVolumeUnsupported = true;
     return 1.0f;
   }
 }
@@ -391,12 +389,15 @@ void HardwareService::setSpeakerVolume(float volume) {
 }
 
 float HardwareService::micVolume() const {
-  if (!m_endpoint)
+  if (!m_endpoint || m_micVolumeUnsupported)
     return 1.0f;
   try {
     unsigned vol = m_endpoint->audDevManager().getInputVolume();
     return vol / 100.0f;
   } catch (...) {
+    // Many devices have no level control. PJSIP logs an error each time it
+    // is asked, so ask once.
+    m_micVolumeUnsupported = true;
     return 1.0f;
   }
 }
