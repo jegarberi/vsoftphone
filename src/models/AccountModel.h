@@ -13,6 +13,12 @@ class AccountModel : public QAbstractListModel {
   Q_OBJECT
   Q_PROPERTY(QString defaultAccountId READ defaultAccountId NOTIFY
                  defaultAccountIdChanged)
+  // Registration status of that account, for the window's status indicator
+  Q_PROPERTY(QString defaultAccountStatus READ defaultAccountStatus NOTIFY
+                 defaultAccountStatusChanged)
+  // False while passwords are still being read from the system store.
+  // Accounts are listed but not registered, and must not be edited yet.
+  Q_PROPERTY(bool ready READ ready NOTIFY readyChanged)
 
 public:
   enum AccountRoles {
@@ -48,6 +54,10 @@ public:
   explicit AccountModel(QObject *parent = nullptr);
 
   QString defaultAccountId() const;
+  bool ready() const { return m_ready; }
+  QString defaultAccountStatus() const {
+    return m_status.value(defaultAccountId());
+  }
 
   int rowCount(const QModelIndex &parent = QModelIndex()) const override;
   QVariant data(const QModelIndex &index,
@@ -67,11 +77,15 @@ public:
 
 signals:
   void defaultAccountIdChanged();
+  void readyChanged();
+  void defaultAccountStatusChanged();
   // The requested change would delete an account that is in a call
   void accountBusy(QString message);
 
 private:
   bool refuseIfBusy(const AccountRecord &rec);
+  void start();
+  bool m_ready = false;
 
   QList<AccountRecord> m_accounts;
   QString m_selectedId; // preferred account; falls back to the first active

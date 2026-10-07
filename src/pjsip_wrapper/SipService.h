@@ -106,7 +106,7 @@ public:
   }
   QString turnUser() const { return net("turnUser", "").toString(); }
   void setTurnUser(const QString &v) { setNet("turnUser", v, ""); }
-  QString turnPassword() const { return m_turnPassword; }
+  QString turnPassword() const;
   void setTurnPassword(const QString &password);
   bool rport() const { return net("rport", true).toBool(); }
   void setRport(bool enabled);
@@ -120,6 +120,8 @@ public:
   void setAcceptIpCalls(bool enabled);
   // True while a call is using the account, which must then not be deleted
   bool hasActiveCalls(const QString &id) const;
+  // Rebuilds accounts whose changes had to wait for a call to end
+  void applyDeferredAccounts();
 
   QList<std::shared_ptr<MyAccount>> getAccounts() const {
     return m_accounts.values();
@@ -150,8 +152,9 @@ private:
   QVariant net(const char *key, const QVariant &fallback) const;
   void setNet(const char *key, const QVariant &value,
               const QVariant &fallback);
-  QString m_turnPassword;
   bool m_networkDirty = false;
+  // Latest settings of accounts that were changed while in a call
+  QMap<QString, QVariantMap> m_deferred;
 
   pj::Endpoint *m_endpoint;
   // Read from the PJSIP thread in onIncomingCall

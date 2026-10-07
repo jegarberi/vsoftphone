@@ -41,7 +41,7 @@ public:
   Q_INVOKABLE QString recordingsDir() const;
   Q_INVOKABLE QUrl recordingsUrl() const;
   // True when a call other than `exceptCallId` is already connected
-  bool hasConnectedCall(int exceptCallId) const;
+  Q_INVOKABLE bool hasConnectedCall(int exceptCallId) const;
   Q_INVOKABLE void holdCall(int callId);
   Q_INVOKABLE void resumeCall(int callId);
   Q_INVOKABLE void transferCall(int callId, const QString &destination);
@@ -53,6 +53,8 @@ public:
   bool isConferenceActive() const;
 
   void addCall(std::shared_ptr<MyCall> call);
+  // Takes a ringing call, lists it, starts the ring tone and announces it
+  void announceIncoming(std::shared_ptr<MyCall> call, const QString &remoteUri);
   void removeCall(int callId);
   void handleMediaState(int callId);
 

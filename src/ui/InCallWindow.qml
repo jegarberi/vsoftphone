@@ -1,21 +1,27 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Controls.Material
 import QtQuick.Layouts
-import Qt5Compat.GraphicalEffects
 
 ApplicationWindow {
     id: inCallWindow
-    onClosing: {
-        if (callState !== "DISCONNECTED")
-            callService.hangupCall(callId)
-        destroy()
-    }
-    width: 480
-    height: 720
-    title: "Call - " + remoteUri
+    objectName: "callWindow"
+    width: 320
+    height: 460
+    minimumWidth: 280
+    minimumHeight: 420
+    title: remoteUri
     visible: true
+    // Its own window, not tied to the main one, which may be hidden in the tray
+    transientParent: null
     color: Theme.background
-    
+
+    Material.theme: Theme.dark ? Material.Dark : Material.Light
+    Material.background: Theme.background
+    Material.foreground: Theme.foreground
+    Material.accent: Theme.accent
+    Material.primary: Theme.accent
+
     property int callId
     property string remoteUri
     property string callState
@@ -28,16 +34,26 @@ ApplicationWindow {
     property int callDuration: 0
     property int lastStatus: 0
     property string lastReason: ""
-    
-    // Call duration timer
+
+    readonly property bool connected: callState === "CONFIRMED"
+    // An incoming call that has not been answered yet
+    readonly property bool ringing: isIncoming && (callState === "INCOMING" || callState === "EARLY")
+
+    // Closing the window ends the call
+    onClosing: {
+        if (callState !== "DISCONNECTED")
+            callService.hangupCall(callId)
+        destroy()
+    }
+
     Timer {
-        id: durationTimer
         interval: 1000
-        running: callState === "CONFIRMED"
+        running: inCallWindow.connected
         repeat: true
         onTriggered: callDuration++
     }
 
+    // A failed call stays up for a moment so the reason can be read
     Timer {
         id: closeTimer
         interval: 3000
@@ -48,439 +64,201 @@ ApplicationWindow {
         var h = Math.floor(seconds / 3600)
         var m = Math.floor((seconds % 3600) / 60)
         var s = seconds % 60
-        if (h > 0) {
-            return "%1:%2:%3".arg(h).arg(m < 10 ? "0" + m : m).arg(s < 10 ? "0" + s : s)
-        }
-        return "%1:%2".arg(m).arg(s < 10 ? "0" + s : s)
+        var mm = (h > 0 && m < 10 ? "0" : "") + m
+        return (h > 0 ? h + ":" : "") + mm + ":" + (s < 10 ? "0" : "") + s
     }
-    
-    Rectangle {
-        anchors.fill: parent
-        color: Theme.background
-        
-        ColumnLayout {
-            anchors.fill: parent
-            spacing: 0
-            
-            // Video/Avatar Area
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                color: Theme.backgroundSecondary
-                
-                // Gradient overlay for better text visibility
-                Rectangle {
-                    anchors.fill: parent
-                    gradient: Gradient {
-                        GradientStop { position: 0.0; color: "#00000000" }
-                        GradientStop { position: 0.7; color: "#00000000" }
-                        GradientStop { position: 1.0; color: "#80000000" }
-                    }
-                }
-                
-                ColumnLayout {
-                    anchors.centerIn: parent
-                    spacing: Theme.spacing6
-                    
-                    AppAvatar {
-                        name: remoteUri
-                        size: 120
-                        showStatus: false
-                        Layout.alignment: Qt.AlignHCenter
-                    }
-                    
-                }
-                
-                // Call Info Overlay
-                ColumnLayout {
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.bottom: parent.bottom
-                    anchors.margins: Theme.spacing6
-                    spacing: Theme.spacing2
-                    
-                    Text {
-                        text: remoteUri
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontSizeTitle
-                        font.weight: Font.Bold
-                        color: "white"
-                        Layout.alignment: Qt.AlignHCenter
-                        elide: Text.ElideMiddle
-                        Layout.maximumWidth: parent.width - Theme.spacing8
-                    }
-                    
-                    Text {
-                        text: {
-                            if (callState === "CALLING") return "Calling..."
-                            if (callState === "INCOMING" || (isIncoming && callState === "EARLY")) return "Incoming Call"
-                            if (callState === "CONFIRMED") return formatDuration(callDuration)
-                            if (callState === "DISCONNECTED" && lastStatus >= 400) return "Error: " + lastStatus + " " + lastReason
-                            return callState
-                        }
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontSizeSubtitle
-                        color: callState === "CONFIRMED" ? Theme.accentGreen : "white"
-                        Layout.alignment: Qt.AlignHCenter
-                    }
-                    
-                }
-            }
-            
-            // Controls Area
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.preferredHeight: 280
-                color: Theme.backgroundSecondary
-                
-                ColumnLayout {
-                    anchors.fill: parent
-                    anchors.margins: Theme.spacing6
-                    spacing: Theme.spacing6
-                    
-                    // Primary Controls
-                    Row {
-                        Layout.alignment: Qt.AlignHCenter
-                        spacing: Theme.spacing6
-                        
-                        // Answer (incoming, not yet answered)
-                        ControlButton {
-                            icon: "📞"
-                            label: "Answer"
-                            active: true
-                            visible: isIncoming && (callState === "INCOMING" || callState === "EARLY")
-                            onClicked: callService.answerCall(callId)
-                        }
 
-                        // Mute
-                        ControlButton {
-                            icon: isMuted ? "🔇" : "🎤"
-                            label: "Mute"
-                            active: isMuted
-                            onClicked: {
-                                callService.toggleMute(callId)
-                                isMuted = !isMuted
-                            }
-                        }
-                        
-                        // Hold/Resume
-                        ControlButton {
-                            icon: isHeld ? "▶️" : "⏸️"
-                            label: isHeld ? "Resume" : "Hold"
-                            active: isHeld
-                            enabled: callState === "CONFIRMED"
-                            onClicked: {
-                                if (isHeld)
-                                    callService.resumeCall(callId)
-                                else
-                                    callService.holdCall(callId)
-                            }
-                        }
-                        
-                        // Keypad
-                        ControlButton {
-                            icon: "#️⃣"
-                            label: "Keypad"
-                            active: dtmfPanel.visible
-                            enabled: callState === "CONFIRMED"
-                            onClicked: dtmfPanel.visible = !dtmfPanel.visible
-                        }
-                    }
-                    
-                    // Secondary Controls
-                    Row {
-                        Layout.alignment: Qt.AlignHCenter
-                        spacing: Theme.spacing6
-                        
-                        // Transfer
-                        ControlButton {
-                            icon: "➡️"
-                            label: "Transfer"
-                            enabled: callState === "CONFIRMED"
-                            onClicked: transferDialog.open()
-                        }
-                        
-                        // Conference
-                        ControlButton {
-                            icon: "👥"
-                            label: "Conference"
-                            active: isInConference
-                            enabled: callState === "CONFIRMED"
-                            onClicked: {
-                                if (isInConference)
-                                    callService.removeFromConference(callId)
-                                else
-                                    callService.addToConference(callId)
-                            }
-                        }
-                        
-                        // Add Call
-                        ControlButton {
-                            icon: "➕"
-                            label: "Add Call"
-                            enabled: callState === "CONFIRMED"
-                        }
-                        
-                        // Record
-                        ControlButton {
-                            icon: "⏺"
-                            label: "Record"
-                            active: isRecording
-                            enabled: callState === "CONFIRMED"
-                            onClicked: isRecording = callService.toggleRecording(callId)
-                        }
-                    }
-                    
-                    // Hangup Button
-                    Rectangle {
-                        Layout.alignment: Qt.AlignHCenter
-                        width: 64
-                        height: 64
-                        radius: Theme.radiusRound
-                        color: hangupMouse.pressed ? Qt.darker(Theme.dangerRed, 1.2) : Theme.dangerRed
-                        
-                        layer.enabled: true
-                        layer.effect: DropShadow {
-                            horizontalOffset: 0
-                            verticalOffset: 4
-                            radius: 12
-                            samples: 25
-                            color: "#60000000"
-                            transparentBorder: true
-                        }
-                        
-                        scale: hangupMouse.pressed ? 0.95 : 1.0
-                        Behavior on scale {
-                            NumberAnimation { duration: Theme.durationFast }
-                        }
-                        
-                        Text {
-                            text: "📞"
-                            font.pixelSize: 28
-                            anchors.centerIn: parent
-                            rotation: 135
-                        }
-                        
-                        MouseArea {
-                            id: hangupMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                callService.hangupCall(callId)
-                                inCallWindow.close()
-                            }
-                        }
-                    }
-                }
-            }
-        }
+    function statusText() {
+        if (callState === "DISCONNECTED")
+            return lastStatus >= 400 ? lastStatus + " " + lastReason : "Call ended"
+        if (ringing)
+            return "Incoming call"
+        if (connected)
+            return (isHeld ? "On hold  ·  " : "") + formatDuration(callDuration)
+        if (callState === "EARLY")
+            return "Ringing…"
+        return "Calling…"
     }
-    
-    // DTMF Keypad Overlay
-    Rectangle {
-        id: dtmfPanel
-        visible: false
+
+    // Quiet when off, accent-coloured when on
+    component CallButton: PillButton {
+        property bool on: false
+        Layout.fillWidth: true
+        kind: on ? "accent" : "tonal"
+        font.pixelSize: 12
+    }
+
+    ColumnLayout {
         anchors.fill: parent
-        color: "#CC000000"
-        
-        MouseArea {
-            anchors.fill: parent
-            onClicked: dtmfPanel.visible = false
+        anchors.margins: 16
+        spacing: 10
+
+        Avatar {
+            Layout.alignment: Qt.AlignHCenter
+            Layout.topMargin: 8
+            name: inCallWindow.remoteUri
+            size: 72
         }
-        
-        Rectangle {
-            anchors.centerIn: parent
-            width: 300
-            height: 400
-            radius: Theme.radiusXLarge
-            color: Theme.backgroundSecondary
-            
-            ColumnLayout {
-                anchors.fill: parent
-                anchors.margins: Theme.spacing6
-                spacing: Theme.spacing4
-                
-                Text {
-                    text: "Dialpad"
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSizeTitle
-                    font.weight: Font.Bold
-                    color: Theme.textPrimary
-                    Layout.alignment: Qt.AlignHCenter
+
+        Label {
+            Layout.fillWidth: true
+            horizontalAlignment: Text.AlignHCenter
+            elide: Text.ElideMiddle
+            text: inCallWindow.remoteUri
+            font.pixelSize: 16
+            font.bold: true
+        }
+
+        Label {
+            Layout.fillWidth: true
+            horizontalAlignment: Text.AlignHCenter
+            elide: Text.ElideRight
+            text: inCallWindow.statusText()
+            color: inCallWindow.connected ? Theme.success
+                 : inCallWindow.callState === "DISCONNECTED" && inCallWindow.lastStatus >= 400 ? Theme.danger
+                 : Theme.muted
+        }
+
+        Item { Layout.fillHeight: true }
+
+        GridLayout {
+            Layout.fillWidth: true
+            columns: 3
+            rowSpacing: 4
+            columnSpacing: 4
+            enabled: inCallWindow.connected
+
+            CallButton {
+                text: "Mute"
+                on: isMuted
+                onClicked: {
+                    callService.toggleMute(callId)
+                    isMuted = !isMuted
                 }
-                
-                GridLayout {
-                    Layout.alignment: Qt.AlignHCenter
-                    columns: 3
-                    rowSpacing: Theme.spacing3
-                    columnSpacing: Theme.spacing3
-                    
-                    Repeater {
-                        model: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"]
-                        
-                        Rectangle {
-                            width: 60
-                            height: 60
-                            radius: Theme.radiusRound
-                            color: dtmfMouse.pressed ? Theme.backgroundTertiary : Theme.background
-                            border.width: 2
-                            border.color: Theme.border
-                            
-                            Text {
-                                text: modelData
-                                font.family: Theme.fontFamily
-                                font.pixelSize: 24
-                                font.weight: Font.Medium
-                                color: Theme.textPrimary
-                                anchors.centerIn: parent
-                            }
-                            
-                            MouseArea {
-                                id: dtmfMouse
-                                anchors.fill: parent
-                                onClicked: callService.sendDtmf(callId, modelData)
-                            }
-                        }
-                    }
-                }
-                
-                AppButton {
-                    text: "Close"
-                    variant: AppButton.Variant.Secondary
-                    Layout.alignment: Qt.AlignHCenter
-                    onClicked: dtmfPanel.visible = false
+            }
+            CallButton {
+                text: isHeld ? "Resume" : "Hold"
+                on: isHeld
+                onClicked: isHeld ? callService.resumeCall(callId) : callService.holdCall(callId)
+            }
+            CallButton {
+                text: "Keypad"
+                onClicked: dtmfPopup.open()
+            }
+            CallButton {
+                text: "Transfer"
+                onClicked: transferDialog.open()
+            }
+            CallButton {
+                text: "Conference"
+                on: isInConference
+                onClicked: isInConference ? callService.removeFromConference(callId)
+                                          : callService.addToConference(callId)
+            }
+            CallButton {
+                text: "Record"
+                on: isRecording
+                onClicked: isRecording = callService.toggleRecording(callId)
+            }
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            Layout.topMargin: 4
+            spacing: 8
+
+            PillButton {
+                Layout.fillWidth: true
+                visible: inCallWindow.ringing
+                text: "Answer"
+                kind: "success"
+                onClicked: callService.answerCall(callId)
+            }
+            PillButton {
+                Layout.fillWidth: true
+                text: inCallWindow.ringing ? "Decline" : "Hang up"
+                kind: "danger"
+                onClicked: {
+                    callService.hangupCall(callId)
+                    inCallWindow.close()
                 }
             }
         }
     }
-    
-    // Transfer Dialog
+
+    Popup {
+        id: dtmfPopup
+        anchors.centerIn: parent
+        modal: true
+        padding: 8
+
+        GridLayout {
+            columns: 3
+            rowSpacing: 2
+            columnSpacing: 2
+            Repeater {
+                model: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"]
+                Button {
+                    flat: true
+                    text: modelData
+                    font.pixelSize: 18
+                    implicitWidth: 64
+                    onClicked: callService.sendDtmf(callId, modelData)
+                }
+            }
+        }
+    }
+
     Dialog {
         id: transferDialog
-        title: "Transfer Call"
+        title: "Transfer call"
+        standardButtons: Dialog.Ok | Dialog.Cancel
         modal: true
         anchors.centerIn: parent
-        width: 320
-        
-        background: Rectangle {
-            color: Theme.backgroundSecondary
-            radius: Theme.radiusXLarge
-            border.width: 1
-            border.color: Theme.border
+        width: Math.min(inCallWindow.width - 24, 300)
+
+        onOpened: {
+            standardButton(Dialog.Ok).enabled = Qt.binding(function() {
+                return transferTargetField.text.trim() !== ""
+            })
+            transferTargetField.forceActiveFocus()
         }
-        
-        ColumnLayout {
-            anchors.fill: parent
-            spacing: Theme.spacing4
-            
-            AppTextField {
-                id: transferTargetField
-                Layout.fillWidth: true
-                placeholderText: "SIP URI or Number"
-            }
-            
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: Theme.spacing3
-                
-                AppButton {
-                    text: "Cancel"
-                    variant: AppButton.Variant.Secondary
-                    Layout.fillWidth: true
-                    onClicked: transferDialog.close()
-                }
-                
-                AppButton {
-                    text: "Transfer"
-                    variant: AppButton.Variant.Primary
-                    Layout.fillWidth: true
-                    onClicked: {
-                        if (transferTargetField.text !== "") {
-                            var target = transferTargetField.text
-                            if (!target.startsWith("sip:"))
-                                target = "sip:" + target
-                            callService.transferCall(callId, target)
-                            transferTargetField.text = ""
-                            transferDialog.close()
-                        }
-                    }
-                }
-            }
+        onAccepted: {
+            callService.transferCall(callId, transferTargetField.text.trim())
+            transferTargetField.clear()
+        }
+
+        TextField {
+            id: transferTargetField
+            width: parent.width
+            placeholderText: "Number or user@host"
+            onAccepted: if (text.trim() !== "") transferDialog.accept()
         }
     }
-    
-    // Call state monitoring
+
+    // The call's row in the model is the source of truth for its state
     Connections {
         target: callModel
         function onDataChanged(topLeft, bottomRight, roles) {
             for (var i = 0; i < callModel.rowCount(); i++) {
-                if (callModel.data(callModel.index(i, 0), Qt.UserRole + 1) === callId) {
-                    callState = callModel.data(callModel.index(i, 0), Qt.UserRole + 3)
-                    hasVideo = callModel.data(callModel.index(i, 0), Qt.UserRole + 4)
-                    isHeld = callModel.data(callModel.index(i, 0), Qt.UserRole + 5)
-                    isInConference = callModel.data(callModel.index(i, 0), Qt.UserRole + 6)
-                    lastStatus = callModel.data(callModel.index(i, 0), Qt.UserRole + 7)
-                    lastReason = callModel.data(callModel.index(i, 0), Qt.UserRole + 8)
+                var row = callModel.index(i, 0)
+                if (callModel.data(row, Qt.UserRole + 1) !== callId)
+                    continue
+                callState = callModel.data(row, Qt.UserRole + 3)
+                hasVideo = callModel.data(row, Qt.UserRole + 4)
+                isHeld = callModel.data(row, Qt.UserRole + 5)
+                isInConference = callModel.data(row, Qt.UserRole + 6)
+                lastStatus = callModel.data(row, Qt.UserRole + 7)
+                lastReason = callModel.data(row, Qt.UserRole + 8)
 
-                    if (callState === "DISCONNECTED") {
-                        if (lastStatus >= 400) {
-                            closeTimer.start()
-                        } else {
-                            inCallWindow.close()
-                        }
-                    }
-                    break
+                if (callState === "DISCONNECTED") {
+                    if (lastStatus >= 400)
+                        closeTimer.start()
+                    else
+                        inCallWindow.close()
                 }
+                break
             }
-        }
-    }
-    
-    // Control Button Component
-    component ControlButton: Rectangle {
-        id: controlBtn
-        property string icon: ""
-        property string label: ""
-        property bool active: false
-        signal clicked()
-        
-        width: 64
-        height: 80
-        radius: Theme.radiusMedium
-        color: active ? Theme.primaryStart : 
-               (controlBtnMouse.containsMouse ? Theme.backgroundTertiary : "transparent")
-        
-        opacity: enabled ? 1.0 : 0.4
-        
-        Behavior on color {
-            ColorAnimation { duration: Theme.durationFast }
-        }
-        
-        ColumnLayout {
-            anchors.centerIn: parent
-            spacing: Theme.spacing1
-            
-            Text {
-                text: controlBtn.icon
-                font.pixelSize: 28
-                Layout.alignment: Qt.AlignHCenter
-            }
-            
-            Text {
-                text: controlBtn.label
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSizeCaption
-                color: active ? "white" : Theme.textSecondary
-                Layout.alignment: Qt.AlignHCenter
-            }
-        }
-        
-        MouseArea {
-            id: controlBtnMouse
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: if (enabled) controlBtn.clicked()
         }
     }
 }

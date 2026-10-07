@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Controls.Material
 import QtQuick.Layouts
 import MicrosipClone 1.0
 
@@ -8,68 +9,83 @@ Item {
 
     signal dialRequested(string number)
 
+    function formatDuration(seconds) {
+        var m = Math.floor(seconds / 60)
+        var s = seconds % 60
+        return m + ":" + (s < 10 ? "0" : "") + s
+    }
+
     HistoryModel {
         id: historyModel
     }
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 10
+        spacing: 0
 
         ListView {
-            id: listView
+            id: list
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
             model: historyModel
 
+            // Click a row to put the number on the dial pad
             delegate: ItemDelegate {
                 width: ListView.view.width
-                text: model.remoteParty
-                
+                onClicked: root.dialRequested(model.remoteParty)
+
                 contentItem: RowLayout {
-                    Image {
-                        Layout.preferredWidth: 24
-                        Layout.preferredHeight: 24
-                        // source: "icon_path" // Todo add icons based on direction
-                        // Placeholder
-                        Rectangle {
-                            anchors.fill: parent
-                            color: model.direction === "Missed" ? "red" : (model.direction === "Incoming" ? "blue" : "green")
-                        }
+                    spacing: 10
+
+                    Label {
+                        text: model.direction === "Outgoing" ? "↗"
+                            : model.direction === "Missed" ? "✕" : "↙"
+                        color: model.direction === "Missed" ? Theme.danger : Theme.muted
+                        font.pixelSize: 16
+                        Layout.preferredWidth: 16
                     }
-                    
+
                     ColumnLayout {
                         Layout.fillWidth: true
+                        spacing: 0
                         Label {
+                            Layout.fillWidth: true
                             text: model.remoteParty
-                            font.bold: true
+                            color: model.direction === "Missed" ? Theme.danger : Theme.foreground
+                            elide: Text.ElideRight
                         }
                         Label {
-                            text: model.timestamp
-                            font.pixelSize: 10
-                            color: "gray"
+                            Layout.fillWidth: true
+                            text: model.direction + "  ·  " + model.timestamp
+                            color: Theme.muted
+                            font.pixelSize: 11
+                            elide: Text.ElideRight
                         }
                     }
-                    
+
                     Label {
-                        text: model.duration > 0 ? new Date(model.duration * 1000).toISOString().substr(11, 8) : ""
-                    }
-                    
-                    Button {
-                        text: "Call"
-                        onClicked: root.dialRequested(model.remoteParty)
+                        text: model.duration > 0 ? root.formatDuration(model.duration) : ""
+                        color: Theme.muted
+                        font.pixelSize: 11
                     }
                 }
             }
+
+            Label {
+                anchors.centerIn: parent
+                visible: list.count === 0
+                text: "No calls yet"
+                color: Theme.muted
+            }
         }
 
-        RowLayout {
+        PillButton {
             Layout.fillWidth: true
-            Button {
-                text: "Clear History"
-                onClicked: historyModel.clearHistory()
-            }
+            Layout.margins: 8
+            text: "Clear history"
+            enabled: list.count > 0
+            onClicked: historyModel.clearHistory()
         }
     }
 }

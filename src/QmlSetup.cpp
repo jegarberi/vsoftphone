@@ -18,10 +18,12 @@
 #include "ui/Theme.h"
 
 void setupQml(QQmlEngine &engine) {
-  // The UI restyles its controls, which the native Windows and macOS styles
-  // do not allow. Fusion is what Linux desktops get by default anyway.
+  // One look on every platform: the Material style, in its compact desktop
+  // variant, coloured from Theme by each window.
+  if (qEnvironmentVariableIsEmpty("QT_QUICK_CONTROLS_MATERIAL_VARIANT"))
+    qputenv("QT_QUICK_CONTROLS_MATERIAL_VARIANT", "Dense");
   if (qEnvironmentVariableIsEmpty("QT_QUICK_CONTROLS_STYLE"))
-    QQuickStyle::setStyle("Fusion");
+    QQuickStyle::setStyle("Material");
 
   qmlRegisterType<HistoryModel>("MicrosipClone", 1, 0, "HistoryModel");
   qmlRegisterType<MessageModel>("MicrosipClone", 1, 0, "MessageModel");

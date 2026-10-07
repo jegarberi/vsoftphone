@@ -1,16 +1,24 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Controls.Material
 import QtQuick.Layouts
 import MicrosipClone 1.0
 
 Item {
     id: root
-    
+
     property string remoteParty: ""
     property bool isRemoteTyping: false
     property var conversations: storageService.conversations()
 
     onRemotePartyChanged: recipientBox.editText = remoteParty
+
+    function send() {
+        if (messageInput.text.length === 0 || root.remoteParty === "")
+            return
+        messageModel.sendMessage(messageInput.text)
+        messageInput.text = ""
+    }
 
     Connections {
         target: storageService
@@ -27,7 +35,8 @@ Item {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 10
+        anchors.margins: 8
+        spacing: 6
 
         // Pick an existing conversation or type a new recipient
         ComboBox {
@@ -45,64 +54,80 @@ Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
+            spacing: 6
             model: messageModel
-            delegate: ItemDelegate {
-                width: listView.width
-                
-                contentItem: ColumnLayout {
+
+            // Our messages on the right, theirs on the left
+            delegate: Item {
+                id: row
+                readonly property bool mine: model.direction !== "Incoming"
+                readonly property bool failed: model.direction === "Failed"
+                width: ListView.view.width
+                height: bubble.height
+
+                Rectangle {
+                    id: bubble
+                    x: row.mine ? row.width - width : 0
+                    width: Math.min(row.width * 0.82, Math.max(body.implicitWidth, stamp.implicitWidth) + 20)
+                    height: body.height + stamp.height + 14
+                    radius: 10
+                    color: row.failed ? Qt.rgba(Theme.danger.r, Theme.danger.g, Theme.danger.b, 0.22)
+                         : row.mine ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.22)
+                         : Theme.surface
+
                     Label {
-                        font.bold: true
-                        font.pixelSize: 10
-                        text: model.direction === "Failed" ? "Not delivered" : model.direction
-                        color: model.direction === "Incoming" ? "blue"
-                             : model.direction === "Failed" ? "red" : "green"
-                    }
-                    Label {
+                        id: body
+                        x: 10
+                        y: 6
+                        width: bubble.width - 20
                         text: model.content
                         wrapMode: Text.Wrap
-                        Layout.fillWidth: true
                     }
                     Label {
-                        text: model.timestamp
-                        font.pixelSize: 8
-                        color: "gray"
-                        Layout.alignment: Qt.AlignRight
+                        id: stamp
+                        x: 10
+                        y: body.y + body.height + 2
+                        text: (row.failed ? "Not delivered  ·  " : "") + model.timestamp
+                        color: row.failed ? Theme.danger : Theme.muted
+                        font.pixelSize: 9
                     }
                 }
             }
-            onCountChanged: listView.positionViewAtEnd()
-            
-            Component.onCompleted: listView.positionViewAtEnd()
+
+            onCountChanged: positionViewAtEnd()
+            Component.onCompleted: positionViewAtEnd()
+
+            Label {
+                anchors.centerIn: parent
+                visible: listView.count === 0
+                text: root.remoteParty === "" ? "Choose or type a recipient" : "No messages yet"
+                color: Theme.muted
+            }
         }
 
         Label {
-            text: remoteParty + " is typing..."
-            visible: isRemoteTyping
+            text: root.remoteParty + " is typing…"
+            visible: root.isRemoteTyping
             font.italic: true
-            font.pixelSize: 10
-            color: "gray"
+            font.pixelSize: 11
+            color: Theme.muted
         }
 
         RowLayout {
             Layout.fillWidth: true
+            spacing: 6
             TextField {
                 id: messageInput
                 Layout.fillWidth: true
-                placeholderText: "Type a message..."
-                onAccepted: {
-                    if (text.length > 0) {
-                        messageModel.sendMessage(text)
-                        text = ""
-                    }
-                }
+                placeholderText: "Message"
+                enabled: root.remoteParty !== ""
+                onAccepted: root.send()
             }
-            Button {
+            PillButton {
                 text: "Send"
-                enabled: messageInput.text.length > 0
-                onClicked: {
-                    messageModel.sendMessage(messageInput.text)
-                    messageInput.text = ""
-                }
+                kind: "accent"
+                enabled: messageInput.text.length > 0 && root.remoteParty !== ""
+                onClicked: root.send()
             }
         }
     }
@@ -110,18 +135,15 @@ Item {
     Timer {
         id: typingTimer
         interval: 3000
-        onTriggered: {
-            sipService.sendTypingIndication(accountModel.defaultAccountId, remoteParty, false)
-        }
+        onTriggered: sipService.sendTypingIndication(accountModel.defaultAccountId, root.remoteParty, false)
     }
 
     Connections {
         target: messageInput
         function onTextChanged() {
             if (messageInput.text.length > 0) {
-                if (!typingTimer.running) {
-                    sipService.sendTypingIndication(accountModel.defaultAccountId, remoteParty, true)
-                }
+                if (!typingTimer.running)
+                    sipService.sendTypingIndication(accountModel.defaultAccountId, root.remoteParty, true)
                 typingTimer.restart()
             }
         }
@@ -130,9 +152,8 @@ Item {
     Connections {
         target: sipService
         function onTypingIndicationReceived(fromUri, isTyping) {
-            if (remoteParty !== "" && fromUri.includes(remoteParty)) {
-                isRemoteTyping = isTyping
-            }
+            if (root.remoteParty !== "" && fromUri.includes(root.remoteParty))
+                root.isRemoteTyping = isTyping
         }
     }
 }

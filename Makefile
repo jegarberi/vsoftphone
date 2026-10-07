@@ -159,12 +159,13 @@ static-check: ## Show the newest glibc version the Linux folder needs
 	  objdump -T $$f | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1; \
 	done
 
+# The image only holds the desktop libraries Qt needs, so it is built once
 .PHONY: static-test
 static-test: ## Run the call test from the Linux folder inside Ubuntu 22.04 (glibc 2.35)
-	docker run --rm -v $(CURDIR)/build-static/dist:/app:ro ubuntu:22.04 bash -c '\
-	  apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
-	    libasound2 libgl1 libegl1 libopengl0 libfontconfig1 libfreetype6 libxkbcommon0 libdbus-1-3 libglib2.0-0 >/dev/null && \
-	  ldd --version | head -1 && /app/call_flow_test'
+	@printf 'FROM ubuntu:22.04\nRUN apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends libasound2 libgl1 libegl1 libopengl0 libfontconfig1 libfreetype6 libxkbcommon0 libdbus-1-3 libglib2.0-0 && rm -rf /var/lib/apt/lists/*\n' \
+	  | docker build -q -t microsip-static-test - >/dev/null
+	docker run --rm -v $(CURDIR)/build-static/dist:/app:ro microsip-static-test \
+	  bash -c 'ldd --version | head -1 && timeout 300 /app/call_flow_test'
 
 .PHONY: windows-test
 windows-test: ## Run the call test from the Windows folder under wine
@@ -274,8 +275,8 @@ $(PJSIP_STAMP): $(DL)/pjproject-$(PJSIP_VERSION).tar.gz $(OPENSSL_STAMP) $(OPUS_
 # kit: moc, rcc and the QML tools run on this machine.
 $(QT_STAMP): | $(S)/.tools
 	@$(VENV)/bin/python -c 'import aqt' 2>/dev/null || $(VENV)/bin/pip install -q aqtinstall==$(AQT_VERSION)
-	@test -d $(QT_HOST) || $(VENV)/bin/aqt install-qt linux desktop $(QT_VERSION) linux_gcc_64 -m qt5compat qtshadertools -O $(CACHE)/qt > $(CACHE)/qt-linux.log 2>&1
-	@test -d $(QT) || $(VENV)/bin/aqt install-qt $(QT_KIT) -m qt5compat qtshadertools -O $(CACHE)/qt > $(CACHE)/qt-$(PLATFORM).log 2>&1
+	@test -d $(QT_HOST) || $(VENV)/bin/aqt install-qt linux desktop $(QT_VERSION) linux_gcc_64 -O $(CACHE)/qt > $(CACHE)/qt-linux.log 2>&1
+	@test -d $(QT) || $(VENV)/bin/aqt install-qt $(QT_KIT) -O $(CACHE)/qt > $(CACHE)/qt-$(PLATFORM).log 2>&1
 	@touch $@
 
 # --- the app ---------------------------------------------------------------

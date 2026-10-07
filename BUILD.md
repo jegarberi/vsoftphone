@@ -6,8 +6,8 @@ Linux is the only platform this has been built and tested on.
 
 - GCC or Clang with C++17, CMake 3.23+, Python 3 (for Conan 2)
 - Qt 6.4+ development packages: Core, Gui, Qml, Quick, QuickControls2,
-  Network, Multimedia, Sql, plus the QML modules for Controls, Layouts,
-  Dialogs and Qt5Compat.GraphicalEffects
+  Network, Sql, plus the QML modules for Controls (with the Material style),
+  Layouts and Qt.labs.platform (the tray icon)
 - Libraries PJSIP is compiled against: OpenSSL, Opus, libvpx, V4L2, ALSA,
   SDL2, libuuid (openh264, opencore-amr and bcg729 are picked up if present)
 - autoconf, automake, libtool (PJSIP is built from source by Conan)
@@ -60,6 +60,17 @@ To also check media relaying, start a TURN server and name it:
 MICROSIP_TEST_TURN=host:port MICROSIP_TEST_TURN_USER=user \
 MICROSIP_TEST_TURN_PASS=pass build/Release/call_flow_test
 ```
+
+## Screenshots
+
+The test can save a picture of every window and of each tab:
+
+```bash
+MICROSIP_TEST_SCREENSHOTS=/tmp/shots QT_QUICK_BACKEND=software \
+  MICROSIP_TEST_THEME="Solarized Light" build/Release/call_flow_test
+```
+
+`MICROSIP_TEST_THEME` is optional and names one of the themes in Settings.
 
 ## Makefile
 

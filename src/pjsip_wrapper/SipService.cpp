@@ -34,11 +34,38 @@ SipService::SipService(QObject *parent)
   m_autoAnswer = settings.value("calls/autoAnswer", false).toBool();
   m_acceptIpCalls = settings.value("calls/acceptIpCalls", true).toBool();
 
-  // Keyring when there is one, settings file otherwise
+  // The global TURN password: system store when there is one, settings file
+  // otherwise, and back to the settings file if storing it fails
+  connect(&SecretStore::instance(), &SecretStore::stored, this,
+          [](const QString &key) {
+            if (key == SecretStore::TurnPasswordKey)
+              QSettings().remove("network/turnPassword");
+          });
+  connect(&SecretStore::instance(), &SecretStore::storeFailed, this,
+          [this](const QString &key) {
+            if (key == SecretStore::TurnPasswordKey)
+              QSettings().setValue("network/turnPassword", turnPassword());
+          });
+}
+
+QString SipService::turnPassword() const {
   bool found = false;
-  m_turnPassword = Keyring::lookup("settings/turnPassword", &found);
-  if (!found)
-    m_turnPassword = settings.value("network/turnPassword").toString();
+  const QString secret =
+      SecretStore::instance().get(SecretStore::TurnPasswordKey, &found);
+  return found ? secret : QSettings().value("network/turnPassword").toString();
+}
+
+// Accounts changed while in a call were only modified in place, which leaves
+// a few settings behind. Once such an account is idle it is rebuilt properly.
+void SipService::applyDeferredAccounts() {
+  const QStringList ids = m_deferred.keys();
+  for (const QString &id : ids) {
+    if (!m_accounts.contains(id)) {
+      m_deferred.remove(id);
+    } else if (!hasActiveCalls(id)) {
+      registerAccount(id, m_deferred.take(id));
+    }
+  }
 }
 
 QVariant SipService::net(const char *key, const QVariant &fallback) const {
@@ -82,14 +109,11 @@ bool SipService::hasActiveCalls(const QString &id) const {
 }
 
 void SipService::setTurnPassword(const QString &password) {
-  if (m_turnPassword == password)
+  if (turnPassword() == password)
     return;
-  m_turnPassword = password;
-  QSettings settings;
-  if (Keyring::store("settings/turnPassword", password))
-    settings.remove("network/turnPassword");
-  else
-    settings.setValue("network/turnPassword", password);
+  SecretStore::instance().set(SecretStore::TurnPasswordKey, password);
+  if (!Keyring::available())
+    QSettings().setValue("network/turnPassword", password);
   m_networkDirty = true;
   emit networkSettingsChanged();
 }
@@ -545,16 +569,21 @@ void SipService::registerAccount(const QString &id, const QVariantMap &config) {
     if (existing && hasActiveCalls(id)) {
       // Deleting the account would pull its data out from under the call, so
       // it is modified in place.
-      // ponytail: PJSIP's modify skips a few fields (the SDP address rewrite
-      // among them); those wait for the next change made while it is idle.
+      // PJSIP's modify skips a few fields (the SDP address rewrite among
+      // them), so the full rebuild is redone when the call is over.
       existing->modify(cfg);
+      m_deferred[id] = config;
     } else {
+      m_deferred.remove(id);
       if (existing) {
         BlfService::instance().unsubscribe(id);
         // An account deletes the buddies attached to it: release ours first
-        runOnSipThread([this, &id] {
+        // `existing` is a reference to the account too: the last one must be
+        // dropped on that thread, or the deletion happens here after all
+        runOnSipThread([this, &id, &existing] {
           BuddyService::instance().clear();
           m_accounts.remove(id);
+          existing.reset();
         });
       }
       auto acc = std::make_shared<MyAccount>();
@@ -578,6 +607,7 @@ void SipService::registerAccount(const QString &id, const QVariantMap &config) {
 void SipService::unregisterAccount(const QString &id) {
   if (m_accounts.contains(id)) {
     BlfService::instance().unsubscribe(id);
+    m_deferred.remove(id);
     runOnSipThread([this, &id] {
       BuddyService::instance().clear();
       m_accounts.remove(id); // ~Account unregisters and deletes the account
@@ -620,10 +650,11 @@ void MyAccount::onIncomingCall(pj::OnIncomingCallParam &prm) {
       &CallService::instance(),
       [call, callId, remoteUri, rejected] {
         CallService &calls = CallService::instance();
-        calls.addCall(call);
-        if (rejected)
+        if (rejected) {
+          calls.addCall(call); // only so that it is released when it ends
           return;
-        emit calls.incomingCall(callId, remoteUri);
+        }
+        calls.announceIncoming(call, remoteUri);
         // Auto answer must not interrupt a conversation already going on
         if (SipService::instance().autoAnswer() &&
             !calls.hasConnectedCall(callId))

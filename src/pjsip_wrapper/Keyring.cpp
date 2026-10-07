@@ -1,5 +1,6 @@
 #include "Keyring.h"
 
+#include <QCoreApplication>
 #include <QDebug>
 #include <QStandardPaths>
 
@@ -183,3 +184,104 @@ QString Keyring::lookup(const QString &, bool *found) {
 void Keyring::clear(const QString &) {}
 
 #endif
+
+// ---------------------------------------------------------------------------
+// SecretStore
+// ---------------------------------------------------------------------------
+
+const QString SecretStore::TurnPasswordKey = "settings/turnPassword";
+
+SecretStore &SecretStore::instance() {
+  static SecretStore store;
+  return store;
+}
+
+SecretStore::SecretStore() : m_worker(new QObject) {
+  m_worker->moveToThread(&m_thread);
+  connect(&m_thread, &QThread::finished, m_worker, &QObject::deleteLater);
+  m_thread.start();
+  // Stopped while the application object still exists: once it is gone Qt
+  // delivers no more events to the worker, and a flush would wait forever.
+  qAddPostRoutine([] { SecretStore::instance().stop(); });
+}
+
+SecretStore::~SecretStore() {
+  // Only reached still running if there never was an application object
+  m_thread.quit();
+  m_thread.wait();
+}
+
+// Lets the writes already queued reach the store, then ends the thread
+void SecretStore::stop() {
+  if (!m_thread.isRunning())
+    return;
+  QMetaObject::invokeMethod(m_worker, [] {}, Qt::BlockingQueuedConnection);
+  m_thread.quit();
+  m_thread.wait();
+}
+
+void SecretStore::onWorker(std::function<void()> job) {
+  QMetaObject::invokeMethod(m_worker, std::move(job), Qt::QueuedConnection);
+}
+
+void SecretStore::preload(const QStringList &keys) {
+  if (!Keyring::available()) {
+    m_ready = true;
+    return;
+  }
+  onWorker([this, keys] {
+    QHash<QString, QString> found;
+    for (const QString &key : keys) {
+      bool present = false;
+      const QString secret = Keyring::lookup(key, &present);
+      if (present)
+        found.insert(key, secret);
+    }
+    QMetaObject::invokeMethod(
+        this,
+        [this, found] {
+          // Anything set() in the meantime is newer than what was stored
+          for (auto it = found.cbegin(); it != found.cend(); ++it) {
+            if (!m_cache.contains(it.key()))
+              m_cache.insert(it.key(), it.value());
+          }
+          m_ready = true;
+          emit ready();
+        },
+        Qt::QueuedConnection);
+  });
+}
+
+QString SecretStore::get(const QString &key, bool *found) const {
+  const auto it = m_cache.constFind(key);
+  *found = it != m_cache.constEnd();
+  return *found ? *it : QString();
+}
+
+void SecretStore::set(const QString &key, const QString &secret) {
+  m_cache[key] = secret;
+  if (!Keyring::available())
+    return;
+  onWorker([this, key, secret] {
+    bool ok = true;
+    if (secret.isEmpty())
+      Keyring::clear(key);
+    else
+      ok = Keyring::store(key, secret);
+    QMetaObject::invokeMethod(
+        this,
+        [this, key, ok] {
+          if (ok)
+            emit stored(key);
+          else
+            emit storeFailed(key);
+        },
+        Qt::QueuedConnection);
+  });
+}
+
+void SecretStore::remove(const QString &key) {
+  m_cache.remove(key);
+  if (Keyring::available())
+    onWorker([key] { Keyring::clear(key); });
+}

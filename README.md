@@ -5,6 +5,9 @@ on Linux, with a cross-compiled Windows build.
 
 ## Features
 
+- Compact window with colour themes (System, Light, Dark, Midnight, Nord,
+  Solarized Light and Dark), interface zoom, and an option to keep running
+  in the system tray when the window is closed
 - Multiple SIP accounts over UDP, TCP or TLS (server certificate verified by
   default), with registration status
 - Calls: answer, hold/resume, mute, DTMF, blind transfer, conference,
@@ -28,8 +31,8 @@ on Linux, with a cross-compiled Windows build.
   Windows. Where there is none they stay unencrypted in the local SQLite
   database (the file is readable by the owner only)
 - "IPv6 only" accounts use IPv6 signalling over UDP only
-- Busy lamp fields are verified against sample NOTIFY bodies, not against a
-  BroadWorks server
+- Busy lamp fields are tested against a stand-in for a BroadWorks server
+  inside the test, not against a real one
 - Windows is cross-compiled and tested under wine only; the macOS build
   target exists but has never been built
 - No in-call file transfer; no Android or iOS builds

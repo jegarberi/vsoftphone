@@ -43,43 +43,73 @@ QString StorageService::secretKey(int accountId, const char *field) const {
   return QString("%1#%2/%3").arg(m_dbPath).arg(accountId).arg(field);
 }
 
-// Returns what to write in the database column: nothing once the keyring has
-// taken the secret, the secret itself when there is no keyring.
-QString StorageService::protectSecret(int accountId, const char *field,
-                                      const QString &value) {
-  const QString key = secretKey(accountId, field);
-  m_secrets[key] = value;
-  if (value.isEmpty()) {
-    Keyring::clear(key);
-    return value;
-  }
-  return Keyring::store(key, value) ? QString() : value;
+// The stored secret if the store has one, else what the database holds
+QString StorageService::secretOr(int accountId, const char *field,
+                                 const QString &dbValue) const {
+  bool found = false;
+  const QString secret =
+      SecretStore::instance().get(secretKey(accountId, field), &found);
+  return found ? secret : dbValue;
 }
 
-QString StorageService::loadSecret(int accountId, const char *field,
-                                   const QString &dbValue) {
-  const QString key = secretKey(accountId, field);
-  auto cached = m_secrets.constFind(key);
-  if (cached != m_secrets.constEnd())
-    return *cached;
+// Hands the secret to the store and returns what belongs in the database
+// column: nothing when a store exists (storeFailed puts it back if the write
+// does not go through), the secret itself when there is none.
+QString StorageService::keepSecret(int accountId, const char *field,
+                                   const QString &value) {
+  SecretStore::instance().set(secretKey(accountId, field), value);
+  return Keyring::available() ? QString() : value;
+}
 
-  QString value = dbValue;
-  if (!dbValue.isEmpty()) {
-    // Plaintext from an older version, or from a time without a keyring:
-    // move it over. `field` is one of our own column names.
-    if (protectSecret(accountId, field, dbValue).isEmpty()) {
-      QSqlQuery query(database());
-      query.prepare(QString("UPDATE accounts SET %1 = '' WHERE id = :id")
-                        .arg(QLatin1String(field)));
-      query.bindValue(":id", accountId);
-      query.exec();
-    }
-  } else {
+// `key` is "<database>#<account id>/<column>", with a column name of ours
+void StorageService::writeSecretColumn(const QString &key,
+                                       const QString &value) {
+  const QString prefix = m_dbPath + "#";
+  if (!key.startsWith(prefix))
+    return; // not an account secret
+  const QString rest = key.mid(prefix.size());
+  const QString column = rest.section('/', 1);
+  if (column != "password" && column != "turnPass")
+    return;
+  QSqlQuery query(database());
+  query.prepare(
+      QString("UPDATE accounts SET %1 = :value WHERE id = :id").arg(column));
+  query.bindValue(":value", value);
+  query.bindValue(":id", rest.section('/', 0, 0).toInt());
+  if (!query.exec())
+    qWarning() << "Error updating stored secret:" << query.lastError().text();
+}
+
+void StorageService::loadSecrets() {
+  SecretStore &store = SecretStore::instance();
+  // Stored safely: the database copy can go. Not stored: it has to stay.
+  connect(&store, &SecretStore::stored, this,
+          [this](const QString &key) { writeSecretColumn(key, QString("")); });
+  connect(&store, &SecretStore::storeFailed, this, [this](const QString &key) {
     bool found = false;
-    value = Keyring::lookup(key, &found);
+    const QString secret = SecretStore::instance().get(key, &found);
+    if (found)
+      writeSecretColumn(key, secret);
+  });
+
+  QStringList keys{SecretStore::TurnPasswordKey};
+  QSqlQuery query(database());
+  if (query.exec("SELECT id, password, turnPass FROM accounts")) {
+    while (query.next()) {
+      const int id = query.value(0).toInt();
+      const char *fields[] = {"password", "turnPass"};
+      for (int i = 0; i < 2; ++i) {
+        const QString plaintext = query.value(i + 1).toString();
+        // Plaintext left by an older version, or by a time without a store:
+        // move it over. The column is cleared once stored() confirms.
+        if (!plaintext.isEmpty() && Keyring::available())
+          store.set(secretKey(id, fields[i]), plaintext);
+        else
+          keys.append(secretKey(id, fields[i]));
+      }
+    }
   }
-  m_secrets[key] = value;
-  return value;
+  store.preload(keys);
 }
 
 bool StorageService::init() {
@@ -95,6 +125,7 @@ bool StorageService::init() {
   const bool ok = createTables();
   // The database holds SIP passwords: keep it readable by the owner only
   QFile::setPermissions(m_dbPath, QFile::ReadOwner | QFile::WriteOwner);
+  loadSecrets();
   return ok;
 }
 
@@ -281,7 +312,7 @@ void StorageService::addAccount(const AccountRecord &acc) {
   query.bindValue(":un", acc.username);
   query.bindValue(":dn", acc.domain);
   query.bindValue(":ln", acc.login);
-  query.bindValue(":pw", acc.password);
+  query.bindValue(":pw", Keyring::available() ? QString() : acc.password);
   query.bindValue(":dn_name", acc.displayName);
   query.bindValue(":tr", acc.transport);
   query.bindValue(":rr", acc.registerRefresh);
@@ -290,7 +321,7 @@ void StorageService::addAccount(const AccountRecord &acc) {
   query.bindValue(":ss", acc.stunServer);
   query.bindValue(":ts", acc.turnServer);
   query.bindValue(":tu", acc.turnUser);
-  query.bindValue(":tp", acc.turnPass);
+  query.bindValue(":tp", Keyring::available() ? QString() : acc.turnPass);
   query.bindValue(":sm", acc.srtpMode);
   query.bindValue(":ar", acc.allowIpRewrite);
   query.bindValue(":anat", acc.autoNat);
@@ -306,8 +337,8 @@ void StorageService::addAccount(const AccountRecord &acc) {
     return;
   }
   const int id = query.lastInsertId().toInt();
-  loadSecret(id, "password", acc.password);
-  loadSecret(id, "turnPass", acc.turnPass);
+  keepSecret(id, "password", acc.password);
+  keepSecret(id, "turnPass", acc.turnPass);
 }
 
 void StorageService::updateAccount(const AccountRecord &acc) {
@@ -328,7 +359,7 @@ void StorageService::updateAccount(const AccountRecord &acc) {
   query.bindValue(":un", acc.username);
   query.bindValue(":dn", acc.domain);
   query.bindValue(":ln", acc.login);
-  query.bindValue(":pw", protectSecret(acc.id, "password", acc.password));
+  query.bindValue(":pw", keepSecret(acc.id, "password", acc.password));
   query.bindValue(":dn_name", acc.displayName);
   query.bindValue(":tr", acc.transport);
   query.bindValue(":rr", acc.registerRefresh);
@@ -337,7 +368,7 @@ void StorageService::updateAccount(const AccountRecord &acc) {
   query.bindValue(":ss", acc.stunServer);
   query.bindValue(":ts", acc.turnServer);
   query.bindValue(":tu", acc.turnUser);
-  query.bindValue(":tp", protectSecret(acc.id, "turnPass", acc.turnPass));
+  query.bindValue(":tp", keepSecret(acc.id, "turnPass", acc.turnPass));
   query.bindValue(":sm", acc.srtpMode);
   query.bindValue(":ar", acc.allowIpRewrite);
   query.bindValue(":anat", acc.autoNat);
@@ -356,10 +387,8 @@ void StorageService::updateAccount(const AccountRecord &acc) {
 
 void StorageService::removeAccount(int id) {
   QSqlQuery query(database());
-  for (const char *field : {"password", "turnPass"}) {
-    Keyring::clear(secretKey(id, field));
-    m_secrets.remove(secretKey(id, field));
-  }
+  for (const char *field : {"password", "turnPass"})
+    SecretStore::instance().remove(secretKey(id, field));
   query.prepare("DELETE FROM accounts WHERE id = :id");
   query.bindValue(":id", id);
   if (!query.exec()) {
@@ -408,10 +437,9 @@ QList<AccountRecord> StorageService::getAccounts() {
       list.append(rec);
     }
   }
-  // After the loop: moving a secret writes to the table being read
   for (AccountRecord &rec : list) {
-    rec.password = loadSecret(rec.id, "password", rec.password);
-    rec.turnPass = loadSecret(rec.id, "turnPass", rec.turnPass);
+    rec.password = secretOr(rec.id, "password", rec.password);
+    rec.turnPass = secretOr(rec.id, "turnPass", rec.turnPass);
   }
   return list;
 }

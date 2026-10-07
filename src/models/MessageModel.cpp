@@ -32,7 +32,7 @@ QVariant MessageModel::data(const QModelIndex &index, int role) const {
   case ContentRole:
     return msg.content;
   case TimestampRole:
-    return msg.timestamp.toString(Qt::TextDate);
+    return msg.timestamp.toString("MMM d, HH:mm");
   default:
     return QVariant();
   }

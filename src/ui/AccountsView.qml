@@ -1,43 +1,75 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Controls.Material
 import QtQuick.Layouts
-import MicrosipClone 1.0
 
 Item {
     id: root
 
+    function openEdit(index) {
+        accountDialog.editIndex = index
+        accountDialog.open()
+    }
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 10
+        spacing: 0
 
         ListView {
-            id: listView
+            id: list
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
             model: accountModel
 
+            // Click a row to edit the account; the switch registers it
             delegate: ItemDelegate {
                 width: ListView.view.width
-                text: model.username + "@" + model.server
-                
+                enabled: accountModel.ready
+                onClicked: root.openEdit(index)
+
                 contentItem: RowLayout {
-                    Label {
-                        text: (model.accountName || (model.username + "@" + model.domain))
-                              + (model.active && model.status ? " — " + model.status : "")
+                    spacing: 10
+
+                    Rectangle {
+                        width: 10
+                        height: 10
+                        radius: 5
+                        color: !model.active ? Theme.muted
+                             : model.status === "Registered" ? Theme.success
+                             : model.status === "" ? Theme.warning
+                             : Theme.danger
                     }
-                    Button {
-                        text: model.active ? "Unregister" : "Register"
-                        onClicked: accountModel.toggleActive(index)
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 0
+                        Label {
+                            Layout.fillWidth: true
+                            text: model.accountName || (model.username + "@" + model.domain)
+                            elide: Text.ElideRight
+                        }
+                        Label {
+                            Layout.fillWidth: true
+                            text: !model.active ? "Off" : (model.status || "Connecting…")
+                            color: Theme.muted
+                            font.pixelSize: 11
+                            elide: Text.ElideRight
+                        }
                     }
-                    Item { Layout.fillWidth: true }
-                    Button {
-                        text: "Edit"
-                        onClicked: root.openEdit(index)
+
+                    Switch {
+                        checked: model.active
+                        // The model may refuse (account in a call), so show
+                        // what it says rather than what was clicked
+                        onClicked: {
+                            accountModel.toggleActive(index)
+                            checked = Qt.binding(function() { return model.active })
+                        }
                     }
-                    Button {
-                        text: "Remove"
+
+                    ToolButton {
+                        text: "✕"
                         onClicked: {
                             removeDialog.row = index
                             removeDialog.accountLabel = model.username + "@" + model.domain
@@ -46,100 +78,48 @@ Item {
                     }
                 }
             }
+
+            Label {
+                anchors.centerIn: parent
+                width: parent.width - 48
+                visible: list.count === 0
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.Wrap
+                text: "No accounts yet.\nYou can still call an IP address directly."
+                color: Theme.muted
+            }
         }
 
-        RowLayout {
+        PillButton {
             Layout.fillWidth: true
-            Button {
-                text: "Add Account"
-                onClicked: {
-                    addAccountDialog.editIndex = -1
-                    addAccountDialog.open()
-                }
-            }
+            Layout.margins: 8
+            text: "Add account"
+            enabled: accountModel.ready
+            onClicked: root.openEdit(-1)
         }
     }
 
+    // --- Add / edit ---------------------------------------------------------
+
+    component Heading: Label {
+        Layout.fillWidth: true
+        Layout.topMargin: 8
+        color: Theme.accent
+        font.pixelSize: 11
+        font.bold: true
+    }
+
     Dialog {
-        id: addAccountDialog
-        title: editIndex >= 0 ? "Edit Account" : "Add Account"
-        width: 400
-        height: 600
+        id: accountDialog
+        property int editIndex: -1
+
+        title: editIndex >= 0 ? "Edit account" : "Add account"
         // Apply stores the account and keeps the dialog open; Save also closes it
         standardButtons: Dialog.Save | Dialog.Apply | Dialog.Cancel
         modal: true
-        x: (parent.width - width) / 2
-        y: (parent.height - height) / 2
-
-        ScrollView {
-            anchors.fill: parent
-            contentWidth: parent.width
-            contentHeight: formLayout.height
-            clip: true
-
-            ColumnLayout {
-                id: formLayout
-                width: parent.width
-                spacing: 10
-
-                TextField { id: accountNameField; placeholderText: "Account Name"; Layout.fillWidth: true }
-                TextField { id: serverField; placeholderText: "SIP Server"; Layout.fillWidth: true }
-                TextField { id: proxyField; placeholderText: "SIP Proxy"; Layout.fillWidth: true }
-                TextField { id: usernameField; placeholderText: "Username"; Layout.fillWidth: true }
-                TextField { id: domainField; placeholderText: "Domain"; Layout.fillWidth: true }
-                TextField { id: loginField; placeholderText: "Login"; Layout.fillWidth: true }
-                TextField { id: passwordField; placeholderText: "Password"; echoMode: TextInput.Password; Layout.fillWidth: true }
-                TextField { id: displayNameField; placeholderText: "Display Name"; Layout.fillWidth: true }
-                
-                RowLayout {
-                    Label { text: "Transport" }
-                    ComboBox {
-                        id: transportCombo
-                        model: ["Auto", "UDP", "TCP", "TLS"]
-                    }
-                }
-                
-                RowLayout {
-                    Label { text: "IP Version" }
-                    ComboBox {
-                        id: ipVersionCombo
-                        model: ["IPv4 Only", "IPv6 Only", "Auto"]
-                    }
-                }
-
-                RowLayout {
-                    Label { text: "Register Refresh" }
-                    SpinBox {
-                        id: refreshSpin
-                        value: 300
-                        to: 3600
-                        editable: true
-                    }
-                }
-
-                TextField { id: blfField; placeholderText: "BLF list URI (BroadWorks busy lamp field)"; Layout.fillWidth: true }
-                CheckBox { id: presenceCheck; text: "Publish Presence" }
-                CheckBox { id: enableStunCheck; text: "Enable STUN" }
-                TextField { id: stunField; placeholderText: "STUN Server (host:port, empty = the one in Settings)"; Layout.fillWidth: true; visible: enableStunCheck.checked }
-                CheckBox { id: iceCheck; text: "ICE: try direct media first, then STUN, then TURN" }
-                TextField { id: turnField; placeholderText: "TURN Server (host:port, empty = the one in Settings)"; Layout.fillWidth: true }
-                TextField { id: turnUserField; placeholderText: "TURN Username"; Layout.fillWidth: true; visible: turnField.text !== "" }
-                TextField { id: turnPassField; placeholderText: "TURN Password"; echoMode: TextInput.Password; Layout.fillWidth: true; visible: turnField.text !== "" }
-
-                RowLayout {
-                    Label { text: "SRTP" }
-                    ComboBox {
-                        id: srtpCombo
-                        model: ["Disabled", "Optional", "Mandatory"]
-                    }
-                }
-
-                CheckBox { id: rewriteCheck; text: "Allow IP Rewrite" }
-                CheckBox { id: autoNatCheck; text: "Automatic NAT Handling" }
-            }
-        }
-
-        property int editIndex: -1
+        anchors.centerIn: parent
+        width: Math.min(root.width - 16, 380)
+        height: Math.min(root.height - 16, 620)
 
         onOpened: {
             // An account is identified by username@domain: both are required
@@ -150,55 +130,32 @@ Item {
             }
             standardButton(Dialog.Save).enabled = Qt.binding(valid)
             standardButton(Dialog.Apply).enabled = Qt.binding(valid)
-            if (editIndex >= 0) {
-                var data = accountModel.getAccount(editIndex)
-                accountNameField.text = data["accountName"]
-                serverField.text = data["server"]
-                proxyField.text = data["proxy"]
-                usernameField.text = data["username"]
-                domainField.text = data["domain"]
-                loginField.text = data["login"]
-                passwordField.text = data["password"]
-                displayNameField.text = data["displayName"]
-                
-                var transp = data["transport"]
-                for(var i=0; i<transportCombo.model.length; i++) {
-                    if(transportCombo.model[i] === transp) transportCombo.currentIndex = i
-                }
-                
-                ipVersionCombo.currentIndex = data["ipVersion"]
 
-                refreshSpin.value = data["registerRefresh"]
-                blfField.text = data["blfUri"]
-                presenceCheck.checked = data["publishPresence"]
-                enableStunCheck.checked = data["enableStun"]
-                iceCheck.checked = data["ice"]
-
-                rewriteCheck.checked = data["allowIpRewrite"]
-                autoNatCheck.checked = data["autoNat"]
-                
-                title = "Edit Account"
-            } else {
-                title = "Add Account"
-                accountNameField.clear()
-                serverField.clear()
-                proxyField.clear()
-                usernameField.clear()
-                domainField.clear()
-                loginField.clear()
-                passwordField.clear()
-                displayNameField.clear()
-                transportCombo.currentIndex = 0
-                ipVersionCombo.currentIndex = 2
-                refreshSpin.value = 300
-                blfField.text = ""
-                presenceCheck.checked = false
-                enableStunCheck.checked = true
-                iceCheck.checked = false
-
-                rewriteCheck.checked = false
-                autoNatCheck.checked = false
-            }
+            var adding = editIndex < 0
+            var data = adding ? {} : accountModel.getAccount(editIndex)
+            accountNameField.text = data["accountName"] || ""
+            usernameField.text = data["username"] || ""
+            domainField.text = data["domain"] || ""
+            passwordField.text = data["password"] || ""
+            loginField.text = data["login"] || ""
+            displayNameField.text = data["displayName"] || ""
+            serverField.text = data["server"] || ""
+            proxyField.text = data["proxy"] || ""
+            transportCombo.currentIndex = Math.max(0, transportCombo.model.indexOf(data["transport"]))
+            ipVersionCombo.currentIndex = adding ? 2 : data["ipVersion"]
+            refreshSpin.value = adding ? 300 : data["registerRefresh"]
+            blfField.text = data["blfUri"] || ""
+            presenceCheck.checked = adding ? false : data["publishPresence"]
+            enableStunCheck.checked = adding ? true : data["enableStun"]
+            stunField.text = data["stunServer"] || ""
+            iceCheck.checked = adding ? false : data["ice"]
+            turnField.text = data["turnServer"] || ""
+            turnUserField.text = data["turnUser"] || ""
+            turnPassField.text = data["turnPass"] || ""
+            srtpCombo.currentIndex = adding ? 0 : data["srtpMode"]
+            rewriteCheck.checked = adding ? false : data["allowIpRewrite"]
+            autoNatCheck.checked = adding ? false : data["autoNat"]
+            usernameField.forceActiveFocus()
         }
 
         onAccepted: store()
@@ -226,17 +183,74 @@ Item {
                 "turnUser": turnUserField.text,
                 "turnPass": turnPassField.text,
                 "srtpMode": srtpCombo.currentIndex,
-
                 "allowIpRewrite": rewriteCheck.checked,
                 "autoNat": autoNatCheck.checked
             }
-            
+
             if (editIndex >= 0) {
                 accountModel.updateAccount(editIndex, data)
             } else {
                 accountModel.addAccount(data)
                 // A second Apply must update this account, not add another
                 editIndex = accountModel.rowCount() - 1
+            }
+        }
+
+        ScrollView {
+            id: formScroll
+            anchors.fill: parent
+            contentWidth: availableWidth
+            clip: true
+
+            ColumnLayout {
+                width: formScroll.availableWidth
+                spacing: 4
+
+                Heading { text: "ACCOUNT"; Layout.topMargin: 0 }
+                TextField { id: usernameField; placeholderText: "Username"; Layout.fillWidth: true }
+                TextField { id: domainField; placeholderText: "Domain"; Layout.fillWidth: true }
+                TextField { id: passwordField; placeholderText: "Password"; echoMode: TextInput.Password; Layout.fillWidth: true }
+                TextField { id: accountNameField; placeholderText: "Name shown in the list (optional)"; Layout.fillWidth: true }
+                TextField { id: displayNameField; placeholderText: "Display name sent to others (optional)"; Layout.fillWidth: true }
+                TextField { id: loginField; placeholderText: "Login, if different from the username"; Layout.fillWidth: true }
+
+                Heading { text: "SERVER" }
+                TextField { id: serverField; placeholderText: "SIP server, if different from the domain"; Layout.fillWidth: true }
+                TextField { id: proxyField; placeholderText: "Outbound proxy (optional)"; Layout.fillWidth: true }
+                RowLayout {
+                    Layout.fillWidth: true
+                    Label { text: "Transport"; Layout.fillWidth: true }
+                    ComboBox { id: transportCombo; model: ["Auto", "UDP", "TCP", "TLS"] }
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    Label { text: "IP version"; Layout.fillWidth: true }
+                    ComboBox { id: ipVersionCombo; model: ["IPv4 only", "IPv6 only", "Auto"] }
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    Label { text: "Register every (seconds)"; Layout.fillWidth: true }
+                    SpinBox { id: refreshSpin; from: 30; to: 3600; value: 300; editable: true }
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    Label { text: "SRTP"; Layout.fillWidth: true }
+                    ComboBox { id: srtpCombo; model: ["Disabled", "Optional", "Mandatory"] }
+                }
+
+                Heading { text: "PRESENCE" }
+                CheckBox { id: presenceCheck; text: "Publish my presence" }
+                TextField { id: blfField; placeholderText: "BLF list URI (BroadWorks busy lamps)"; Layout.fillWidth: true }
+
+                Heading { text: "NAT" }
+                CheckBox { id: enableStunCheck; text: "Use STUN" }
+                TextField { id: stunField; placeholderText: "STUN server (empty: the one in Settings)"; Layout.fillWidth: true; visible: enableStunCheck.checked }
+                CheckBox { id: iceCheck; text: "ICE: direct media first, then STUN, then TURN" }
+                TextField { id: turnField; placeholderText: "TURN server (empty: the one in Settings)"; Layout.fillWidth: true }
+                TextField { id: turnUserField; placeholderText: "TURN username"; Layout.fillWidth: true; visible: turnField.text !== "" }
+                TextField { id: turnPassField; placeholderText: "TURN password"; echoMode: TextInput.Password; Layout.fillWidth: true; visible: turnField.text !== "" }
+                CheckBox { id: rewriteCheck; text: "Use the address the server sees (IP rewrite)" }
+                CheckBox { id: autoNatCheck; text: "Automatic NAT handling" }
             }
         }
     }
@@ -249,7 +263,12 @@ Item {
         standardButtons: Dialog.Yes | Dialog.No
         modal: true
         anchors.centerIn: parent
-        Label { text: "Remove " + removeDialog.accountLabel + "?" }
+        width: Math.min(root.width - 24, 320)
+        Label {
+            width: parent.width
+            wrapMode: Text.Wrap
+            text: "Remove " + removeDialog.accountLabel + "?"
+        }
         onAccepted: accountModel.removeAccount(row)
     }
 
@@ -260,7 +279,12 @@ Item {
         standardButtons: Dialog.Ok
         modal: true
         anchors.centerIn: parent
-        Label { id: busyLabel }
+        width: Math.min(root.width - 24, 320)
+        Label {
+            id: busyLabel
+            width: parent.width
+            wrapMode: Text.Wrap
+        }
     }
     Connections {
         target: accountModel
@@ -268,10 +292,5 @@ Item {
             busyLabel.text = message
             busyDialog.open()
         }
-    }
-
-    function openEdit(index) {
-        addAccountDialog.editIndex = index
-        addAccountDialog.open()
     }
 }

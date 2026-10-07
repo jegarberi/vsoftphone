@@ -4,11 +4,10 @@ FROM debian:bookworm
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential cmake git pkg-config ca-certificates \
     python3 python3-venv autoconf automake libtool \
-    qt6-base-dev qt6-declarative-dev qt6-multimedia-dev libqt6sql6-sqlite \
+    qt6-base-dev qt6-declarative-dev libqt6sql6-sqlite \
     qml6-module-qtquick qml6-module-qtquick-controls qml6-module-qtquick-layouts \
     qml6-module-qtquick-window qml6-module-qtquick-templates \
-    qml6-module-qtquick-dialogs qml6-module-qtqml-workerscript \
-    qml6-module-qt5compat-graphicaleffects \
+    qml6-module-qtqml-workerscript qml6-module-qt-labs-platform \
     libssl-dev libopus-dev libvpx-dev libv4l-dev libasound2-dev libsdl2-dev \
     uuid-dev \
     && rm -rf /var/lib/apt/lists/*

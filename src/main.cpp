@@ -1,6 +1,7 @@
 #include <QDir>
 #include <QFile>
 #include <QGuiApplication>
+#include <QIcon>
 #include <QLocalServer>
 #include <QLocalSocket>
 #include <QQmlApplicationEngine>
@@ -16,16 +17,26 @@
 #include "QmlSetup.h"
 #include "pjsip_wrapper/SipService.h"
 #include "pjsip_wrapper/StorageService.h"
+#include "ui/Theme.h"
 
 int main(int argc, char *argv[]) {
   // PJSIP's SDL video backend would otherwise swallow SIGINT/SIGTERM
   qputenv("SDL_NO_SIGNAL_HANDLERS", "1");
+
+  // The interface zoom from Settings; Qt reads it when the application starts
+  const double scale = Theme::savedUiScale();
+  if (scale > 0 && !qFuzzyCompare(scale, 1.0) &&
+      qEnvironmentVariableIsEmpty("QT_SCALE_FACTOR"))
+    qputenv("QT_SCALE_FACTOR", QByteArray::number(scale, 'f', 2));
 
   QGuiApplication app(argc, argv);
 
   app.setOrganizationName("Antigravity");
   app.setOrganizationDomain("antigravity.dev");
   app.setApplicationName("MicrosipClone");
+  app.setWindowIcon(QIcon(":/ui/icon.png"));
+  // The main window decides: it quits, or hides in the tray (see main.qml)
+  app.setQuitOnLastWindowClosed(false);
 
   // A second copy would register the same accounts from another port
   const QString dataDir =

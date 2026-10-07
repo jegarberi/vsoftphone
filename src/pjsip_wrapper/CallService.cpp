@@ -108,12 +108,6 @@ CallService &CallService::instance() {
 }
 
 CallService::CallService(QObject *parent) : QObject(parent) {
-  connect(this, &CallService::incomingCall, [this](int id, QString uri) {
-    m_lastCallId = id;
-    m_lastRemoteUri = uri;
-    CallModel::instance().addCall(id, uri);
-    setRinging(id, true);
-  });
   connect(this, &CallService::outgoingCall, [this](int id, QString uri) {
     m_lastCallId = id;
     m_lastRemoteUri = uri;
@@ -210,6 +204,19 @@ void CallService::addCall(std::shared_ptr<MyCall> call) {
   m_activeCalls[call->getId()] = call;
 }
 
+// The model row is added before the signal goes out: QML handlers run ahead
+// of C++ slots, and the UI looks the call up in the model straight away.
+void CallService::announceIncoming(std::shared_ptr<MyCall> call,
+                                   const QString &remoteUri) {
+  const int id = call->getId();
+  addCall(call);
+  m_lastCallId = id;
+  m_lastRemoteUri = remoteUri;
+  CallModel::instance().addCall(id, remoteUri);
+  setRinging(id, true);
+  emit incomingCall(id, remoteUri);
+}
+
 void CallService::removeCall(int callId) {
   m_activeCalls.remove(callId);
   m_conferenceParticipants.remove(callId);
@@ -219,6 +226,11 @@ void CallService::removeCall(int callId) {
   m_recorders.erase(callId);
   setRinging(callId, false);
   CallModel::instance().removeCall(callId);
+  // Queued: the call object above has to be gone before accounts are rebuilt
+  QMetaObject::invokeMethod(
+      &SipService::instance(),
+      [] { SipService::instance().applyDeferredAccounts(); },
+      Qt::QueuedConnection);
 }
 
 void CallService::toggleMute(int callId) {

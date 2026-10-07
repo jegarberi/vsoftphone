@@ -39,7 +39,7 @@ QVariant HistoryModel::data(const QModelIndex &index, int role) const {
   case DirectionRole:
     return entry.direction;
   case TimestampRole:
-    return entry.timestamp.toString(Qt::TextDate);
+    return entry.timestamp.toString("MMM d, HH:mm");
   case DurationRole:
     return entry.duration;
   default:

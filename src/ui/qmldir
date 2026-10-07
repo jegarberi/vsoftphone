@@ -1,5 +1,3 @@
 module microsip.ui
-AppButton 1.0 components/AppButton.qml
-AppCard 1.0 components/AppCard.qml
-AppTextField 1.0 components/AppTextField.qml
-AppAvatar 1.0 components/AppAvatar.qml
+Avatar 1.0 components/Avatar.qml
+PillButton 1.0 components/PillButton.qml

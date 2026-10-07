@@ -103,13 +103,15 @@ private:
   explicit StorageService(QObject *parent = nullptr);
   ~StorageService();
 
-  // Passwords live in the desktop keyring when there is one, leaving the
-  // database column empty; otherwise they stay in the database.
+  // Passwords live in the system password store when there is one, leaving
+  // the database column empty; otherwise they stay in the database. All of
+  // it goes through SecretStore, which never blocks this thread.
   QString secretKey(int accountId, const char *field) const;
-  QString loadSecret(int accountId, const char *field, const QString &dbValue);
-  QString protectSecret(int accountId, const char *field,
-                        const QString &value);
-  QHash<QString, QString> m_secrets; // saves a keyring round trip per read
+  QString secretOr(int accountId, const char *field,
+                   const QString &dbValue) const;
+  QString keepSecret(int accountId, const char *field, const QString &value);
+  void writeSecretColumn(const QString &key, const QString &value);
+  void loadSecrets();
 
   QSqlDatabase database() const;
   QString m_dbPath;

@@ -1,4 +1,5 @@
 #include "AccountModel.h"
+#include "../pjsip_wrapper/Keyring.h"
 #include "../pjsip_wrapper/SipService.h"
 
 // The id SipService and the other models know an account by
@@ -82,7 +83,11 @@ AccountModel::AccountModel(QObject *parent) : QAbstractListModel(parent) {
               m_status[id] = status;
               emit dataChanged(index(i), index(i), {StatusRole});
             }
+            emit defaultAccountStatusChanged();
           });
+  // A different default account has a different status
+  connect(this, &AccountModel::defaultAccountIdChanged, this,
+          &AccountModel::defaultAccountStatusChanged);
 
   // Global STUN, TURN and rewrite settings are baked into each account
   connect(&SipService::instance(), &SipService::networkSettingsApplied, this,
@@ -95,10 +100,25 @@ AccountModel::AccountModel(QObject *parent) : QAbstractListModel(parent) {
           });
 
   m_accounts = StorageService::instance().getAccounts();
+  if (SecretStore::instance().isReady())
+    start();
+  else // listed now, registered when their passwords have been read
+    connect(&SecretStore::instance(), &SecretStore::ready, this,
+            &AccountModel::start);
+}
+
+// Passwords are in: load the accounts with them and bring them up
+void AccountModel::start() {
+  beginResetModel();
+  m_accounts = StorageService::instance().getAccounts();
+  endResetModel();
   for (const auto &rec : m_accounts) {
     if (rec.active)
       SipService::instance().registerAccount(keyOf(rec), toMap(rec));
   }
+  m_ready = true;
+  emit readyChanged();
+  emit defaultAccountIdChanged();
 }
 
 QString AccountModel::defaultAccountId() const {

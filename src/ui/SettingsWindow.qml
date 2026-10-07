@@ -1,13 +1,30 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Controls.Material
 import QtQuick.Layouts
-import QtQuick.Dialogs
 
 ApplicationWindow {
     id: settingsWindow
+    width: 420
+    height: 580
+    minimumWidth: 340
+    minimumHeight: 400
+    title: "Settings"
+    visible: true
+    color: Theme.background
+
+    Material.theme: Theme.dark ? Material.Dark : Material.Light
+    Material.background: Theme.background
+    Material.foreground: Theme.foreground
+    Material.accent: Theme.accent
+    Material.primary: Theme.accent
+
     // Apply keeps the current values and stays open; Save also closes
     function applySettings() {
+        Theme.uiScale = scaleSlider.value
+        Theme.closeToTray = trayCheck.checked
         Theme.saveSettings()
+
         hardwareService.setAudioDevice(micDevCombo.currentIndex, speakerDevCombo.currentIndex)
         hardwareService.echoCancellation = ecCheckBox.checked
         hardwareService.saveSettings()
@@ -34,7 +51,8 @@ ApplicationWindow {
         sipService.applyNetworkSettings()
     }
 
-    // Changes apply live; closing without Save goes back to the saved ones
+    // The theme and the sound levels are previewed live; closing without
+    // Apply goes back to what was saved
     onClosing: {
         Theme.loadSettings()
         hardwareService.restoreSettings()
@@ -42,316 +60,303 @@ ApplicationWindow {
         hardwareService.micVolume = initialMicVolume
     }
 
-    // Volumes are the sound device's own levels: nothing is stored for them,
-    // closing without Apply just puts them back
+    // Volumes are the sound device's own levels: nothing is stored for them
     property real initialSpeakerVolume: 1
     property real initialMicVolume: 1
     Component.onCompleted: {
         initialSpeakerVolume = hardwareService.speakerVolume
         initialMicVolume = hardwareService.micVolume
     }
-    width: 600
-    height: 700
-    title: "Settings"
-    visible: true
-    color: Theme.background
+
+    component Heading: Label {
+        Layout.fillWidth: true
+        Layout.topMargin: 14
+        color: Theme.accent
+        font.pixelSize: 11
+        font.bold: true
+    }
+
+    component Hint: Label {
+        Layout.fillWidth: true
+        wrapMode: Text.Wrap
+        color: Theme.muted
+        font.pixelSize: 11
+    }
+
+    footer: Pane {
+        Material.background: Theme.surface
+        padding: 8
+        RowLayout {
+            anchors.fill: parent
+            spacing: 8
+            Item { Layout.fillWidth: true }
+            Button {
+                flat: true
+                text: "Cancel"
+                onClicked: settingsWindow.close()
+            }
+            PillButton {
+                text: "Apply"
+                onClicked: settingsWindow.applySettings()
+            }
+            PillButton {
+                kind: "accent"
+                text: "Save"
+                onClicked: {
+                    settingsWindow.applySettings()
+                    settingsWindow.close()
+                }
+            }
+        }
+    }
 
     ScrollView {
+        id: scroll
         anchors.fill: parent
+        contentWidth: availableWidth
         clip: true
 
         ColumnLayout {
-            id: settingsLayout
-            width: parent.width - 20
-            anchors.horizontalCenter: parent.horizontalCenter
-            anchors.margins: 10
-            spacing: 20
+            x: 16
+            width: scroll.availableWidth - 32
+            spacing: 4
 
-            GroupBox {
-                title: "General"
-                Layout.fillWidth: true
-                ColumnLayout {
-                    width: parent.width
-                    spacing: Theme.spacing2
-
-                    CheckBox { 
-                        text: "Dark Mode"
-                        checked: Theme.isDarkMode
-                        onToggled: Theme.isDarkMode = checked
-                    }
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        Label { text: "UI Scale (" + Theme.uiScale.toFixed(2) + "x)" }
-                        Slider {
-                            id: uiScaleSlider
-                            from: 0.75
-                            to: 2.0
-                            value: Theme.uiScale
-                            Layout.fillWidth: true
-                            onMoved: Theme.uiScale = value
-                        }
-                    }
-
-                    CheckBox {
-                        id: dndCheck
-                        text: "Do Not Disturb"
-                        checked: sipService.doNotDisturb
-                    }
-                    CheckBox {
-                        id: autoAnswerCheck
-                        text: "Auto Answer (when no other call is connected)"
-                        checked: sipService.autoAnswer
-                    }
-
-                    CheckBox {
-                        id: tlsVerifyCheck
-                        text: "Verify TLS server certificates (applies after restart)"
-                        checked: sipService.tlsVerify
-                    }
-                    Button {
-                        text: "Open recordings folder"
-                        onClicked: Qt.openUrlExternally(callService.recordingsUrl())
-                    }
-
-                    RowLayout {
-                        Label { text: "Presence" }
-                        ComboBox {
-                            id: presenceCombo
-                            model: ["Online", "Away", "Busy", "Offline"]
-                            currentIndex: Math.max(0, model.indexOf(presenceService.status))
-                        }
-                    }
-                }
-            }
-
-            GroupBox {
-                title: "Audio"
-                Layout.fillWidth: true
-                ColumnLayout {
-                    width: parent.width
-                    spacing: 10
-                    GridLayout {
-                        columns: 2
-                        Layout.fillWidth: true
-                        Label { 
-                            text: "Speaker"
-                            color: Theme.textPrimary
-                        }
-                        ComboBox {
-                            id: speakerDevCombo
-                            currentIndex: hardwareService.playbackIndex
-                            model: hardwareService.audioPlaybackDevices.length > 0 ? hardwareService.audioPlaybackDevices : ["No devices available"]
-                            Layout.fillWidth: true
-                            enabled: hardwareService.audioPlaybackDevices.length > 0
-                        }
-                        Label { 
-                            text: "Microphone"
-                            color: Theme.textPrimary
-                        }
-                        ComboBox {
-                            id: micDevCombo
-                            currentIndex: hardwareService.captureIndex
-                            model: hardwareService.audioCaptureDevices.length > 0 ? hardwareService.audioCaptureDevices : ["No devices available"]
-                            Layout.fillWidth: true
-                            enabled: hardwareService.audioCaptureDevices.length > 0
-                        }
-                    }
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        Label { text: "Speaker Volume" }
-                        Slider {
-                            id: speakerVolSlider
-                            from: 0.0
-                            to: 1.0
-                            value: hardwareService.speakerVolume
-                            Layout.fillWidth: true
-                            onMoved: hardwareService.speakerVolume = value
-                        }
-                    }
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        Label { text: "Mic Volume" }
-                        Slider {
-                            id: micVolSlider
-                            from: 0.0
-                            to: 1.0
-                            value: hardwareService.micVolume
-                            Layout.fillWidth: true
-                            onMoved: hardwareService.micVolume = value
-                        }
-                    }
-
-                    CheckBox {
-                        id: ecCheckBox
-                        text: "Echo Cancellation"
-                        checked: hardwareService.echoCancellation
-                        onToggled: hardwareService.echoCancellation = checked
-                    }
-
-                    RowLayout {
-                        Button {
-                            text: "Test Audio"
-                            onClicked: hardwareService.startAudioTest(micDevCombo.currentIndex, speakerDevCombo.currentIndex)
-                        }
-                        Button {
-                            text: "Stop Test"
-                            onClicked: hardwareService.stopAudioTest()
-                        }
-                        Item { Layout.fillWidth: true }
-                        Button {
-                            text: "Refresh Devices"
-                            icon.name: "view-refresh"
-                            onClicked: hardwareService.refreshDevices()
-                        }
-                    }
-                }
-            }
-
-            GroupBox {
-                title: "Audio Codecs"
-                Layout.fillWidth: true
-                ColumnLayout {
-                    width: parent.width
-                    Repeater {
-                        id: codecRepeater
-                        model: hardwareService.audioCodecs
-                        CheckBox {
-                            text: modelData
-                            checked: hardwareService.isCodecEnabled(modelData)
-                        }
-                    }
-                }
-            }
-
-            GroupBox {
-                title: "Network"
-                Layout.fillWidth: true
-                ColumnLayout {
-                    width: parent.width
-                    Label {
-                        text: "STUN and TURN here are used by accounts that name no server of their own. They reach the accounts on Apply or Save."
-                        wrapMode: Text.Wrap
-                        Layout.fillWidth: true
-                        color: Theme.textSecondary
-                    }
-                    RowLayout {
-                        Layout.fillWidth: true
-                        CheckBox {
-                            id: stunCheck
-                            text: "STUN"
-                            checked: sipService.stunEnabled
-                        }
-                        TextField {
-                            Layout.fillWidth: true
-                            enabled: stunCheck.checked
-                            id: stunField
-                            placeholderText: "host:port"
-                            text: sipService.stunServer
-                        }
-                    }
-                    RowLayout {
-                        Layout.fillWidth: true
-                        CheckBox {
-                            id: turnCheck
-                            text: "TURN"
-                            checked: sipService.turnEnabled
-                        }
-                        TextField {
-                            Layout.fillWidth: true
-                            enabled: turnCheck.checked
-                            id: turnField
-                            placeholderText: "host:port"
-                            text: sipService.turnServer
-                        }
-                    }
-                    RowLayout {
-                        Layout.fillWidth: true
-                        enabled: turnCheck.checked
-                        TextField {
-                            Layout.fillWidth: true
-                            id: turnUserField
-                            placeholderText: "TURN username"
-                            text: sipService.turnUser
-                        }
-                        TextField {
-                            Layout.fillWidth: true
-                            id: turnPassField
-                            placeholderText: "TURN password"
-                            echoMode: TextInput.Password
-                            text: sipService.turnPassword
-                        }
-                    }
-                    CheckBox {
-                        id: rportCheck
-                        text: "rport: ask servers to reply to the port our requests come from"
-                        checked: sipService.rport
-                    }
-                    CheckBox {
-                        id: mediaRportCheck
-                        text: "rport for media: advertise in SDP the address the server saw us at"
-                        checked: sipService.mediaRport
-                    }
-                    CheckBox {
-                        id: acceptIpCheck
-                        text: "Accept direct IP calls (anyone who can reach this machine can ring it)"
-                        checked: sipService.acceptIpCalls
-                    }
-                }
-            }
-
-            GroupBox {
-                title: "Video"
-                visible: callService.videoAvailable
-                Layout.fillWidth: true
-                ColumnLayout {
-                    width: parent.width
-                    spacing: 10
-                    GridLayout {
-                        columns: 2
-                        Layout.fillWidth: true
-                        Label { 
-                            text: "Camera"
-                            color: Theme.textPrimary
-                        }
-                        ComboBox {
-                            id: cameraDevCombo
-                            model: hardwareService.videoDevices.length > 0 ? hardwareService.videoDevices : ["No devices available"]
-                            Layout.fillWidth: true
-                            enabled: hardwareService.videoDevices.length > 0
-                        }
-                    }
-                    RowLayout {
-                        Button {
-                            text: "Preview Video"
-                            onClicked: hardwareService.startVideoPreview(cameraDevCombo.currentIndex)
-                        }
-                        Button {
-                            text: "Stop Preview"
-                            onClicked: hardwareService.stopVideoPreview()
-                        }
-                    }
-                }
-            }
-
+            // --- Appearance -------------------------------------------------
+            Heading { text: "APPEARANCE"; Layout.topMargin: 12 }
             RowLayout {
-                Layout.alignment: Qt.AlignRight
                 Layout.fillWidth: true
+                Label { text: "Theme"; Layout.fillWidth: true }
+                ComboBox {
+                    id: themeCombo
+                    model: Theme.names
+                    currentIndex: Math.max(0, Theme.names.indexOf(Theme.current))
+                    onActivated: Theme.current = currentText
+                }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                Label { text: "Zoom " + scaleSlider.value.toFixed(2) + "×" }
+                Slider {
+                    id: scaleSlider
+                    Layout.fillWidth: true
+                    from: 0.75
+                    to: 2.0
+                    stepSize: 0.05
+                    value: Theme.uiScale
+                }
+            }
+            Hint { text: "Zoom takes effect the next time the app starts." }
+            CheckBox {
+                id: trayCheck
+                text: "Keep running in the tray when the window is closed"
+                checked: Theme.closeToTray
+            }
+
+            // --- Calls ------------------------------------------------------
+            Heading { text: "CALLS" }
+            CheckBox {
+                id: dndCheck
+                text: "Do Not Disturb"
+                checked: sipService.doNotDisturb
+            }
+            CheckBox {
+                id: autoAnswerCheck
+                text: "Auto answer (when no other call is connected)"
+                checked: sipService.autoAnswer
+            }
+            CheckBox {
+                id: acceptIpCheck
+                text: "Accept direct IP calls"
+                checked: sipService.acceptIpCalls
+            }
+            Hint { text: "With this on, anyone who can reach this machine can make it ring." }
+            RowLayout {
+                Layout.fillWidth: true
+                Label { text: "Presence"; Layout.fillWidth: true }
+                ComboBox {
+                    id: presenceCombo
+                    model: ["Online", "Away", "Busy", "Offline"]
+                    currentIndex: Math.max(0, model.indexOf(presenceService.status))
+                }
+            }
+            Button {
+                flat: true
+                text: "Open recordings folder"
+                onClicked: Qt.openUrlExternally(callService.recordingsUrl())
+            }
+
+            // --- Audio ------------------------------------------------------
+            Heading { text: "AUDIO" }
+            Label { text: "Microphone" }
+            ComboBox {
+                id: micDevCombo
+                Layout.fillWidth: true
+                model: hardwareService.audioCaptureDevices
+                currentIndex: hardwareService.captureIndex
+            }
+            Label { text: "Speaker" }
+            ComboBox {
+                id: speakerDevCombo
+                Layout.fillWidth: true
+                model: hardwareService.audioPlaybackDevices
+                currentIndex: hardwareService.playbackIndex
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                Label { text: "Speaker level" }
+                Slider {
+                    id: speakerVolSlider
+                    Layout.fillWidth: true
+                    from: 0.0
+                    to: 1.0
+                    value: hardwareService.speakerVolume
+                    onMoved: hardwareService.speakerVolume = value
+                }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                Label { text: "Microphone level" }
+                Slider {
+                    id: micVolSlider
+                    Layout.fillWidth: true
+                    from: 0.0
+                    to: 1.0
+                    value: hardwareService.micVolume
+                    onMoved: hardwareService.micVolume = value
+                }
+            }
+            CheckBox {
+                id: ecCheckBox
+                text: "Echo cancellation"
+                checked: hardwareService.echoCancellation
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                Button {
+                    flat: true
+                    text: "Test"
+                    onClicked: hardwareService.startAudioTest(micDevCombo.currentIndex, speakerDevCombo.currentIndex)
+                }
+                Button {
+                    flat: true
+                    text: "Stop test"
+                    onClicked: hardwareService.stopAudioTest()
+                }
                 Item { Layout.fillWidth: true }
                 Button {
-                    text: "Apply"
-                    onClicked: settingsWindow.applySettings()
+                    flat: true
+                    text: "Rescan devices"
+                    onClicked: hardwareService.refreshDevices()
                 }
-                Button {
-                    text: "Save"
-                    onClicked: {
-                        settingsWindow.applySettings()
-                        settingsWindow.close()
+            }
+
+            // --- Codecs -----------------------------------------------------
+            Heading { text: "AUDIO CODECS" }
+            Flow {
+                Layout.fillWidth: true
+                spacing: 0
+                Repeater {
+                    id: codecRepeater
+                    model: hardwareService.audioCodecs
+                    CheckBox {
+                        text: modelData
+                        checked: hardwareService.isCodecEnabled(modelData)
                     }
                 }
-                Button { text: "Cancel"; onClicked: settingsWindow.close() }
+            }
+
+            // --- Video ------------------------------------------------------
+            Heading { text: "VIDEO"; visible: callService.videoAvailable }
+            ComboBox {
+                id: cameraDevCombo
+                Layout.fillWidth: true
+                visible: callService.videoAvailable
+                model: hardwareService.videoDevices
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                visible: callService.videoAvailable
+                Button {
+                    flat: true
+                    text: "Preview"
+                    enabled: cameraDevCombo.count > 0
+                    onClicked: hardwareService.startVideoPreview(cameraDevCombo.currentIndex)
+                }
+                Button {
+                    flat: true
+                    text: "Stop preview"
+                    onClicked: hardwareService.stopVideoPreview()
+                }
+            }
+
+            // --- Network ----------------------------------------------------
+            Heading { text: "NETWORK" }
+            Hint { text: "STUN and TURN here are used by accounts that name no server of their own." }
+            RowLayout {
+                Layout.fillWidth: true
+                CheckBox {
+                    id: stunCheck
+                    text: "STUN"
+                    checked: sipService.stunEnabled
+                }
+                TextField {
+                    id: stunField
+                    Layout.fillWidth: true
+                    enabled: stunCheck.checked
+                    placeholderText: "host:port"
+                    text: sipService.stunServer
+                }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                CheckBox {
+                    id: turnCheck
+                    text: "TURN"
+                    checked: sipService.turnEnabled
+                }
+                TextField {
+                    id: turnField
+                    Layout.fillWidth: true
+                    enabled: turnCheck.checked
+                    placeholderText: "host:port"
+                    text: sipService.turnServer
+                }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                enabled: turnCheck.checked
+                TextField {
+                    id: turnUserField
+                    Layout.fillWidth: true
+                    placeholderText: "TURN username"
+                    text: sipService.turnUser
+                }
+                TextField {
+                    id: turnPassField
+                    Layout.fillWidth: true
+                    placeholderText: "TURN password"
+                    echoMode: TextInput.Password
+                    text: sipService.turnPassword
+                }
+            }
+            CheckBox {
+                id: rportCheck
+                text: "rport: ask servers to reply to our source port"
+                checked: sipService.rport
+            }
+            CheckBox {
+                id: mediaRportCheck
+                text: "rport for media: advertise the address the server saw"
+                checked: sipService.mediaRport
+            }
+            CheckBox {
+                id: tlsVerifyCheck
+                text: "Verify TLS server certificates"
+                checked: sipService.tlsVerify
+            }
+            Hint {
+                text: "Certificate checking takes effect the next time the app starts."
+                Layout.bottomMargin: 12
             }
         }
     }

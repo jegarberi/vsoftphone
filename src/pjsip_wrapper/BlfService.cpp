@@ -162,19 +162,24 @@ static void onRxNotify(pjsip_evsub *sub, pjsip_rx_data *rdata, int *p_st_code,
   *p_st_code = 200;
   if (pjsua_get_state() != PJSUA_STATE_RUNNING)
     return; // shutting down: the service may already be gone
-  const pjsip_msg_body *body = rdata->msg_info.msg->body;
-  if (!body || !body->data || !body->len)
+  pjsip_msg_body *body = rdata->msg_info.msg->body;
+  if (!body)
     return;
 
-  QByteArray boundary;
+  // PJSIP has already split a multipart body into parts; ask for the text
+  // back. Anything else arrives as the plain text it is.
+  QByteArray boundary, data;
   if (pj_stricmp2(&body->content_type.type, "multipart") == 0) {
-    pj_str_t name = {(char *)"boundary", 8};
-    const pjsip_param *param =
-        pjsip_param_find(&body->content_type.param, &name);
-    if (param)
-      boundary = QByteArray(param->value.ptr, param->value.slen).replace('"', "");
+    pj_str_t mpBoundary, raw;
+    if (pjsip_multipart_get_raw(body, &mpBoundary, &raw) != PJ_SUCCESS)
+      return;
+    boundary = QByteArray(mpBoundary.ptr, mpBoundary.slen);
+    data = QByteArray(raw.ptr, raw.slen);
+  } else if (body->data && body->len) {
+    data = QByteArray(static_cast<const char *>(body->data), body->len);
   }
-  const QByteArray data(static_cast<const char *>(body->data), body->len);
+  if (data.isEmpty())
+    return;
 
   const QString accountId = BlfService::instance().accountOf(sub);
   QMetaObject::invokeMethod(

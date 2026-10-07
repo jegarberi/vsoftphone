@@ -7,12 +7,11 @@
         <file>ui/DialpadView.qml</file>
         <file>ui/SettingsWindow.qml</file>
         <file>ui/InCallWindow.qml</file>
-        <file>ui/MessageWindow.qml</file>
+        <file>ui/IncomingCallToast.qml</file>
         <file>ui/MessageView.qml</file>
-        <file>ui/components/AppButton.qml</file>
-        <file>ui/components/AppCard.qml</file>
-        <file>ui/components/AppTextField.qml</file>
-        <file>ui/components/AppAvatar.qml</file>
+        <file>ui/components/Avatar.qml</file>
+        <file>ui/components/PillButton.qml</file>
         <file>ui/qmldir</file>
+        <file>ui/icon.png</file>
     </qresource>
 </RCC>

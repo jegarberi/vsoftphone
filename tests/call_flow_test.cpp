@@ -6,15 +6,20 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QGuiApplication>
+#include <QKeyEvent>
 #include <QQmlApplicationEngine>
 #include <QQmlComponent>
+#include <QQuickWindow>
 #include <QSettings>
 #include <QStandardPaths>
 #include <QThread>
 #include <cstdio>
 #include <cstdlib>
 #include <functional>
+#include <pjsip_simple.h>
+#include <pjsip_ua.h>
 #include <pjsua-lib/pjsua.h>
+#include <string>
 
 #include "QmlSetup.h"
 #include "models/AccountModel.h"
@@ -28,6 +33,7 @@
 #include "pjsip_wrapper/SipService.h"
 #include "pjsip_wrapper/SipUri.h"
 #include "pjsip_wrapper/StorageService.h"
+#include "ui/Theme.h"
 
 #define CHECK(cond)                                                            \
   do {                                                                         \
@@ -116,6 +122,96 @@ static bool iceRunning(int id) {
   return ice && ice->active && ice->sess_state == PJ_ICE_STRANS_STATE_RUNNING;
 }
 
+// What a BroadWorks server sends for a BLF list: a resource list (RLMI) and
+// one dialog-info document per monitored user, as multipart/related
+static const QByteArray kBlfNotify =
+    "--b1\r\nContent-Type: application/rlmi+xml;charset=\"UTF-8\"\r\n"
+    "Content-ID: <list>\r\n\r\n"
+    "<?xml version=\"1.0\"?><list xmlns=\"urn:ietf:params:xml:ns:rlmi\" "
+    "uri=\"sip:myblf@as.example.com\" version=\"1\" fullState=\"true\">"
+    "<resource uri=\"sip:2001@as.example.com\"><name>Alice A</name>"
+    "<instance id=\"a\" state=\"active\" cid=\"c1\"/></resource>"
+    "<resource uri=\"sip:2002@as.example.com\"><name>Bob B</name>"
+    "<instance id=\"b\" state=\"active\" cid=\"c2\"/></resource>"
+    "<resource uri=\"sip:2003@as.example.com\">"
+    "<instance id=\"c\" state=\"active\" cid=\"c3\"/></resource></list>\r\n"
+    "--b1\r\nContent-Type: application/dialog-info+xml\r\n"
+    "Content-ID: <c1>\r\n\r\n"
+    "<dialog-info xmlns=\"urn:ietf:params:xml:ns:dialog-info\" version=\"0\" "
+    "state=\"full\" entity=\"sip:2001@as.example.com\"><dialog id=\"x\" "
+    "direction=\"recipient\"><state>confirmed</state></dialog></dialog-info>"
+    "\r\n--b1\r\nContent-Type: application/dialog-info+xml\r\n\r\n"
+    "<dialog-info xmlns=\"urn:ietf:params:xml:ns:dialog-info\" version=\"0\" "
+    "state=\"full\" entity=\"sip:2002@as.example.com\"><dialog id=\"y\">"
+    "<state>early</state></dialog></dialog-info>\r\n"
+    "--b1\r\nContent-Type: application/dialog-info+xml\r\n\r\n"
+    "<dialog-info xmlns=\"urn:ietf:params:xml:ns:dialog-info\" version=\"0\" "
+    "state=\"full\" entity=\"sip:2003@as.example.com\"/>\r\n--b1--\r\n";
+
+// A stand-in for that server, inside our own endpoint: it accepts a SUBSCRIBE
+// to the list "blflist" and answers with the NOTIFY above. This is what the
+// real exchange looks like on the wire, short of authentication.
+static std::string blfServerContact;
+
+static pj_bool_t blfServerOnRxRequest(pjsip_rx_data *rdata) {
+  pjsip_msg *msg = rdata->msg_info.msg;
+  if (pjsip_method_cmp(&msg->line.req.method, pjsip_get_subscribe_method()) != 0 ||
+      rdata->msg_info.to->tag.slen != 0) // refreshes belong to the dialog
+    return PJ_FALSE;
+  auto *uri = static_cast<pjsip_sip_uri *>(pjsip_uri_get_uri(msg->line.req.uri));
+  if (pj_strcmp2(&uri->user, "blflist") != 0)
+    return PJ_FALSE;
+
+  pj_str_t contact = pj_str(const_cast<char *>(blfServerContact.c_str()));
+  pjsip_dialog *dlg = nullptr;
+  CHECK(pjsip_dlg_create_uas_and_inc_lock(pjsip_ua_instance(), rdata, &contact,
+                                          &dlg) == PJ_SUCCESS);
+  pjsip_evsub_user callbacks;
+  pj_bzero(&callbacks, sizeof(callbacks));
+  callbacks.on_rx_refresh = [](pjsip_evsub *, pjsip_rx_data *, int *st_code,
+                               pj_str_t **, pjsip_hdr *, pjsip_msg_body **) {
+    *st_code = 200; // refreshed, or ended with Expires: 0
+  };
+  pjsip_evsub *sub = nullptr;
+  CHECK(pjsip_evsub_create_uas(dlg, &callbacks, rdata, 0, &sub) == PJ_SUCCESS);
+  CHECK(pjsip_evsub_accept(sub, rdata, 200, nullptr) == PJ_SUCCESS);
+
+  pjsip_tx_data *tdata = nullptr;
+  CHECK(pjsip_evsub_notify(sub, PJSIP_EVSUB_STATE_ACTIVE, nullptr, nullptr,
+                           &tdata) == PJ_SUCCESS);
+  pj_str_t type = pj_str((char *)"multipart");
+  pj_str_t subtype = pj_str((char *)"related");
+  pj_str_t text = {const_cast<char *>(kBlfNotify.constData()),
+                   pj_ssize_t(kBlfNotify.size())};
+  tdata->msg->body = pjsip_msg_body_create(tdata->pool, &type, &subtype, &text);
+  auto *boundary = PJ_POOL_ZALLOC_T(tdata->pool, pjsip_param);
+  boundary->name = pj_str((char *)"boundary");
+  boundary->value = pj_str((char *)"b1");
+  pj_list_push_back(&tdata->msg->body->content_type.param, boundary);
+  CHECK(pjsip_evsub_send_request(sub, tdata) == PJ_SUCCESS);
+  pjsip_dlg_dec_lock(dlg);
+  return PJ_TRUE;
+}
+
+static pjsip_module blfServerModule = {
+    nullptr, nullptr, {(char *)"mod-test-blf-server", 19}, -1,
+    PJSIP_MOD_PRIORITY_APPLICATION - 1, // ahead of PJSUA, which answers 489
+    nullptr, nullptr, nullptr, nullptr, &blfServerOnRxRequest, nullptr,
+    nullptr, nullptr, nullptr};
+
+// Whether the account advertises the server-seen address in SDP; one of the
+// settings PJSIP cannot change under a live call
+static bool sdpNatRewrite(const QString &accountId) {
+  pj_pool_t *pool = pjsua_pool_create("cfg", 1000, 1000);
+  pjsua_acc_config cfg;
+  CHECK(pjsua_acc_get_config(
+            SipService::instance().getAccount(accountId)->getId(), pool,
+            &cfg) == PJ_SUCCESS);
+  const bool rewrite = cfg.allow_sdp_nat_rewrite;
+  pj_pool_release(pool);
+  return rewrite;
+}
+
 static int historyCount(const QString &direction) {
   int n = 0;
   for (const auto &rec : StorageService::instance().getCallHistory())
@@ -136,6 +232,7 @@ int main(int argc, char *argv[]) {
   CHECK(dataDir.contains("qttest"));
   QDir(dataDir).removeRecursively();
   QSettings().clear();
+  QSettings("Antigravity", "MicrosipClone").clear(); // Theme's file, test copy
 
   // --- address classification ------------------------------------------------
   CHECK(hasIpHost("10.0.0.5") && hasIpHost("bob@10.0.0.5:5080"));
@@ -163,30 +260,7 @@ int main(int argc, char *argv[]) {
 
   // --- BroadWorks BLF NOTIFY: resource list of dialog-info documents ---------
   {
-    const QByteArray body =
-        "--b1\r\nContent-Type: application/rlmi+xml;charset=\"UTF-8\"\r\n"
-        "Content-ID: <list>\r\n\r\n"
-        "<?xml version=\"1.0\"?><list xmlns=\"urn:ietf:params:xml:ns:rlmi\" "
-        "uri=\"sip:myblf@as.example.com\" version=\"1\" fullState=\"true\">"
-        "<resource uri=\"sip:2001@as.example.com\"><name>Alice A</name>"
-        "<instance id=\"a\" state=\"active\" cid=\"c1\"/></resource>"
-        "<resource uri=\"sip:2002@as.example.com\"><name>Bob B</name>"
-        "<instance id=\"b\" state=\"active\" cid=\"c2\"/></resource>"
-        "<resource uri=\"sip:2003@as.example.com\">"
-        "<instance id=\"c\" state=\"active\" cid=\"c3\"/></resource></list>\r\n"
-        "--b1\r\nContent-Type: application/dialog-info+xml\r\n"
-        "Content-ID: <c1>\r\n\r\n"
-        "<dialog-info xmlns=\"urn:ietf:params:xml:ns:dialog-info\" version=\"0\" "
-        "state=\"full\" entity=\"sip:2001@as.example.com\"><dialog id=\"x\" "
-        "direction=\"recipient\"><state>confirmed</state></dialog></dialog-info>"
-        "\r\n--b1\r\nContent-Type: application/dialog-info+xml\r\n\r\n"
-        "<dialog-info xmlns=\"urn:ietf:params:xml:ns:dialog-info\" version=\"0\" "
-        "state=\"full\" entity=\"sip:2002@as.example.com\"><dialog id=\"y\">"
-        "<state>early</state></dialog></dialog-info>\r\n"
-        "--b1\r\nContent-Type: application/dialog-info+xml\r\n\r\n"
-        "<dialog-info xmlns=\"urn:ietf:params:xml:ns:dialog-info\" version=\"0\" "
-        "state=\"full\" entity=\"sip:2003@as.example.com\"/>\r\n--b1--\r\n";
-    const QList<BlfLamp> lamps = BlfService::parseNotify("b1", body);
+    const QList<BlfLamp> lamps = BlfService::parseNotify("b1", kBlfNotify);
     CHECK(lamps.size() == 3);
     CHECK(lamps[0].uri == "2001@as.example.com" && lamps[0].state == "Busy");
     CHECK(lamps[0].name == "Alice A");
@@ -209,6 +283,9 @@ int main(int argc, char *argv[]) {
   pjsua_transport_info ti;
   CHECK(pjsua_transport_get_info(0, &ti) == PJ_SUCCESS);
   const QString domain = QString("127.0.0.1:%1").arg(ti.local_name.port);
+  blfServerContact = QString("<sip:blflist@%1>").arg(domain).toStdString();
+  CHECK(pjsip_endpt_register_module(pjsua_get_pjsip_endpt(),
+                                    &blfServerModule) == PJ_SUCCESS);
   const QString accountId = "tester@" + domain;
 
   // --- account -------------------------------------------------------------
@@ -261,6 +338,25 @@ int main(int argc, char *argv[]) {
   accounts.updateAccount(0, account);
   pump(500);
 
+  // --- BLF end to end: subscribe to a list, receive its NOTIFY ----------------
+  account["blfUri"] = "blflist";
+  accounts.updateAccount(0, account);
+  auto lampOf = [&](const QString &name) {
+    for (int i = 0; i < contacts.rowCount(); ++i) {
+      if (contacts.data(contacts.index(i), ContactsModel::NameRole) == name)
+        return contacts.data(contacts.index(i), ContactsModel::StatusRole)
+            .toString();
+    }
+    return QString();
+  };
+  CHECK(waitFor([&] { return contacts.rowCount() == 4; })); // Alice + 3 lamps
+  CHECK(lampOf("Alice A") == "Busy");
+  CHECK(lampOf("Bob B") == "Ringing");
+  CHECK(lampOf("2003") == "Idle");
+  account["blfUri"] = ""; // unsubscribing takes the lamps away again
+  accounts.updateAccount(0, account);
+  CHECK(contacts.rowCount() == 1);
+
   // --- answered call: mute, hold, resume, record, DTMF ---------------------
   CallService &callService = CallService::instance();
   HistoryModel history;
@@ -284,6 +380,11 @@ int main(int argc, char *argv[]) {
   accounts.updateAccount(0, account);
   sip.applyNetworkSettings(); // nothing changed: must not touch the accounts
   CHECK(busyRefusals == 2 && allConfirmed(2));
+
+  // A setting PJSIP cannot change under a live call waits for the call to end
+  sip.setMediaRport(true);
+  sip.applyNetworkSettings();
+  CHECK(!sdpNatRewrite(accountId));
 
   CHECK(waitFor([&] { return micReaches(outgoing); }));
   // Since PJSIP 2.15 the conference bridge applies connections on its own
@@ -320,6 +421,10 @@ int main(int argc, char *argv[]) {
   CHECK(historyCount("Incoming") == 1);
   CHECK(historyCount("Missed") == 0);
   CHECK(history.rowCount() == 2); // the model followed the database
+  CHECK(waitFor([&] { return sdpNatRewrite(accountId); })); // applied now
+  sip.setMediaRport(false);
+  sip.applyNetworkSettings();
+  CHECK(!sdpNatRewrite(accountId));
 
   // --- video call is still answered (audio only on the answering side) ------
   callService.makeCall(accountId, "tester", true);
@@ -485,8 +590,12 @@ int main(int argc, char *argv[]) {
     qInstallMessageHandler(collectQmlWarnings);
     QQmlApplicationEngine engine;
     setupQml(engine);
-    for (const char *file : {"main.qml", "SettingsWindow.qml",
-                             "InCallWindow.qml", "MessageWindow.qml"}) {
+    // MICROSIP_TEST_THEME=<name> picks the theme the screenshots are taken in
+    if (qEnvironmentVariableIsSet("MICROSIP_TEST_THEME"))
+      Theme::instance().setCurrent(qEnvironmentVariable("MICROSIP_TEST_THEME"));
+    for (const char *file :
+         {"main.qml", "SettingsWindow.qml", "InCallWindow.qml",
+          "IncomingCallToast.qml"}) {
       QQmlComponent component(&engine, QUrl(QString("qrc:/ui/%1").arg(file)));
       QObject *window = component.create();
       if (!window)
@@ -497,6 +606,66 @@ int main(int argc, char *argv[]) {
       window->setProperty("remoteParty", "tester");
       if (QString(file) == "SettingsWindow.qml")
         CHECK(QMetaObject::invokeMethod(window, "applySettings")); // Apply button
+
+      // Digits, * and # typed anywhere in the main window go to the dial pad
+      if (QObject *display = window->findChild<QObject *>("dialDisplay")) {
+        QObject *tabs = window->findChild<QObject *>("tabs");
+        tabs->setProperty("currentIndex", 2); // typing from the History page
+        pump(100);
+        for (const char *key : {"5", "*", "#", "0"}) {
+          QKeyEvent press(QEvent::KeyPress, 0, Qt::NoModifier, key);
+          QCoreApplication::sendEvent(window, &press);
+        }
+        CHECK(display->property("text") == "5*#0");
+        CHECK(tabs->property("currentIndex") == 0);
+        QKeyEvent backspace(QEvent::KeyPress, Qt::Key_Backspace, Qt::NoModifier);
+        QCoreApplication::sendEvent(window, &backspace);
+        CHECK(display->property("text") == "5*#");
+        display->setProperty("text", "");
+
+        // An incoming call raises a toast; answering from it connects the
+        // call and opens its window next to the caller's
+        sip.setAutoAnswer(false);
+        callService.makeCall(accountId, "tester");
+        CHECK(waitFor([&] {
+          return window->findChild<QObject *>("incomingToast") != nullptr;
+        }));
+        CHECK(window->findChildren<QObject *>("callWindow").size() == 1);
+        CHECK(QMetaObject::invokeMethod(
+            window->findChild<QObject *>("incomingToast"), "answer"));
+        CHECK(waitFor([] { return allConfirmed(2); }));
+        CHECK(waitFor([&] {
+          return window->findChildren<QObject *>("callWindow").size() == 2 &&
+                 !window->findChild<QObject *>("incomingToast");
+        }));
+        callService.hangupCall(callId(0));
+        CHECK(waitFor([] { return CallModel::instance().rowCount() == 0; }));
+        // Both call windows close themselves when their call ends
+        CHECK(waitFor([&] {
+          return window->findChildren<QObject *>("callWindow").isEmpty();
+        }));
+        sip.setAutoAnswer(true);
+      }
+
+      // MICROSIP_TEST_SCREENSHOTS=<dir> QT_QUICK_BACKEND=software saves a
+      // picture of every window, and of each tab of the main one
+      const QString shots = qEnvironmentVariable("MICROSIP_TEST_SCREENSHOTS");
+      auto *quickWindow = qobject_cast<QQuickWindow *>(window);
+      if (!shots.isEmpty() && quickWindow) {
+        const QString base = shots + "/" + QString(file).section('.', 0, 0);
+        if (QObject *tabs = window->findChild<QObject *>("tabs")) {
+          for (int tab = 0; tab < 5; ++tab) {
+            tabs->setProperty("currentIndex", tab);
+            pump(250);
+            quickWindow->grabWindow().save(QString("%1-%2.png").arg(base).arg(tab));
+          }
+        } else {
+          window->setProperty("visible", true);
+          window->setProperty("callState", "CONFIRMED");
+          pump(250);
+          quickWindow->grabWindow().save(base + ".png");
+        }
+      }
       pump(300);
       delete window;
     }
