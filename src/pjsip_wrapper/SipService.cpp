@@ -8,6 +8,7 @@
 #include "StorageService.h"
 #include "SipUri.h"
 #include <QDebug>
+#include <QDir>
 #include <QFile>
 #include <QNetworkInformation>
 #include <QSettings>
@@ -425,6 +426,28 @@ void SipService::init() {
           if (QFile::exists(bundle)) {
             tls_cfg.tlsConfig.CaListFile = bundle;
             break;
+          }
+        }
+#endif
+#ifdef Q_OS_ANDROID
+        // Android keeps its roots as one PEM file each; join them into the
+        // single file PJSIP wants
+        if (tls_cfg.tlsConfig.CaListFile.empty()) {
+          QFile bundle(QStandardPaths::writableLocation(
+                           QStandardPaths::AppDataLocation) +
+                       "/ca-bundle.pem");
+          const QDir roots("/system/etc/security/cacerts");
+          if (bundle.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            const QStringList names = roots.entryList(QDir::Files);
+            for (const QString &name : names) {
+              QFile root(roots.filePath(name));
+              if (root.open(QIODevice::ReadOnly))
+                bundle.write(root.readAll() + "\n");
+            }
+            bundle.close();
+            if (!names.isEmpty())
+              tls_cfg.tlsConfig.CaListFile =
+                  QFile::encodeName(bundle.fileName()).toStdString();
           }
         }
 #endif

@@ -640,6 +640,15 @@ int main(int argc, char *argv[]) {
     hardware.startVideoPreview(colorbar);
     const bool previewed = hardware.videoPreviewActive();
     pump(300);
+    // Closing the preview's window ends the preview. The test has no window
+    // to close, so it sends the event PJSIP's window sends.
+    if (previewed) {
+      pjmedia_event closing;
+      pjmedia_event_init(&closing, PJMEDIA_EVENT_WND_CLOSING, nullptr, &closing);
+      pjmedia_event_publish(nullptr, &closing, &closing,
+                            PJMEDIA_EVENT_PUBLISH_DEFAULT);
+      CHECK(waitFor([&] { return !hardware.videoPreviewActive(); }));
+    }
     hardware.stopVideoPreview();
     CHECK(!hardware.videoPreviewActive());
     std::printf("call_flow_test: camera preview %s\n",

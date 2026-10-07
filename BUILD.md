@@ -61,6 +61,26 @@ MICROSIP_TEST_TURN=host:port MICROSIP_TEST_TURN_USER=user \
 MICROSIP_TEST_TURN_PASS=pass build/Release/call_flow_test
 ```
 
+## Android
+
+```bash
+make android                           # 64-bit ARM, most phones
+make android ANDROID_ABI=armeabi-v7a   # old 32-bit phones
+```
+
+`Dockerfile.android` installs the Android SDK and NDK and Qt for Android,
+cross-builds OpenSSL, Opus and PJSIP, and packages the app as an APK in
+`build-android/`. It targets Android 6.0 (API 23): that is the oldest version
+Qt 6.4 supports, and 6.4 is the oldest Qt this app builds with. The first
+build downloads several gigabytes and accepts the Android SDK licence.
+
+The APK is signed with Android's debug key, so it installs for testing
+(`adb install build-android/microsip-clone-arm64-v8a.apk`); sign a release
+with your own key. **The APK has been built but never run**: there was no
+device or emulator to try it on, and the interface was designed for a
+desktop, with separate windows for calls and settings. Audio only, like the
+other cross builds.
+
 ## A SIP server to try it against
 
 ```bash

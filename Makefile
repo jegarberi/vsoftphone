@@ -313,6 +313,16 @@ endif
 	find $(DIST) -name '*.debug' -delete
 	printf '[Paths]\nPrefix = .\nPlugins = plugins\nQmlImports = qml\n' > $(DIST)/qt.conf
 
+##@ Android (in Docker)
+
+ANDROID_ABI ?= arm64-v8a
+
+.PHONY: android
+android: ## Build an APK for Android 6.0 and newer into build-android/ (ANDROID_ABI=armeabi-v7a for old 32-bit phones)
+	docker build -f Dockerfile.android --build-arg ANDROID_ABI=$(ANDROID_ABI) -t microsip-android-$(ANDROID_ABI) .
+	mkdir -p build-android
+	docker run --rm --user $$(id -u):$$(id -g) -v $(CURDIR)/build-android:/out microsip-android-$(ANDROID_ABI)
+
 ##@ Test server (Asterisk in Docker, Linux)
 
 ASTERISK := docker compose -f asterisk/compose.yaml

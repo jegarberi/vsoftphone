@@ -4,6 +4,7 @@
 #include <QSettings>
 #include <pjsua2/endpoint.hpp>
 #include <pjsua2/media.hpp>
+#include <pjsua-lib/pjsua.h>
 
 using namespace pj;
 
@@ -15,7 +16,29 @@ HardwareService &HardwareService::instance() {
 HardwareService::HardwareService(QObject *parent)
     : QObject(parent), m_endpoint(nullptr), m_videoPreview(nullptr) {}
 
+// PJSIP media thread. Closing the preview's window (it is a window of its
+// own, drawn by PJSIP) has to end the preview: release the camera and let the
+// button say "Preview" again.
+static pj_status_t onMediaEvent(pjmedia_event *event, void *) {
+  if ((event->type == PJMEDIA_EVENT_WND_CLOSING ||
+       event->type == PJMEDIA_EVENT_WND_CLOSED) &&
+      pjsua_get_state() == PJSUA_STATE_RUNNING) {
+    QMetaObject::invokeMethod(
+        &HardwareService::instance(),
+        [] { HardwareService::instance().stopVideoPreview(); },
+        Qt::QueuedConnection);
+  }
+  return PJ_SUCCESS;
+}
+
+HardwareService::~HardwareService() {
+  if (m_endpoint && pjsua_get_state() == PJSUA_STATE_RUNNING)
+    pjmedia_event_unsubscribe(nullptr, &onMediaEvent, nullptr, nullptr);
+}
+
 void HardwareService::init(pj::Endpoint *endpoint) {
+  if (!m_endpoint) // once: every video window reports through this
+    pjmedia_event_subscribe(nullptr, &onMediaEvent, nullptr, nullptr);
   m_endpoint = endpoint;
   refreshDevices();
   restoreSettings();
@@ -136,9 +159,14 @@ void HardwareService::refreshDevices() {
     VidDevManager &vdm = m_endpoint->vidDevManager();
     VideoDevInfoVector2 videoDevs = vdm.enumDev2();
     qDebug() << "HardwareService: Found" << videoDevs.size() << "video devices";
+    // A camera is a capture device that says which picture formats it has;
+    // one that reports none cannot be opened
+    auto usable = [](const VideoDevInfo &info) {
+      return info.dir != PJMEDIA_DIR_RENDER && !info.fmt.empty();
+    };
     bool anyCamera = false;
     for (unsigned i = 0; i < videoDevs.size(); ++i)
-      anyCamera = anyCamera || videoDevs[i].dir != PJMEDIA_DIR_RENDER;
+      anyCamera = anyCamera || usable(videoDevs[i]);
     if (anyCamera) {
       m_videoDevices.append("System default");
       m_videoDeviceIndices.append(PJMEDIA_VID_DEFAULT_CAPTURE_DEV);
@@ -149,8 +177,8 @@ void HardwareService::refreshDevices() {
       QString driver = QString::fromStdString(info.driver);
       QString friendlyName =
           driver.isEmpty() ? name : QString("%1 (%2)").arg(name, driver);
-      if (info.dir == PJMEDIA_DIR_RENDER)
-        continue; // a renderer is not a camera
+      if (!usable(info))
+        continue;
       m_videoDevices.append(friendlyName);
       m_videoDeviceIndices.append(i);
       qDebug() << " - Video Device:" << friendlyName;

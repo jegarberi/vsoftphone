@@ -81,6 +81,7 @@ signals:
 
 private:
   explicit HardwareService(QObject *parent = nullptr);
+  ~HardwareService();
   pj::Endpoint *m_endpoint;
   pj::VideoPreview *m_videoPreview;
   bool m_echoCancellation = true; // pjsua enables EC by default

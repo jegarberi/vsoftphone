@@ -15,6 +15,9 @@ if(MICROSIP_PJSIP_PKGCONFIG)
     target_include_directories(pjsip::pjsip INTERFACE ${PJSIP_STATIC_INCLUDE_DIRS})
     target_compile_options(pjsip::pjsip INTERFACE ${PJSIP_STATIC_CFLAGS_OTHER})
     target_link_libraries(pjsip::pjsip INTERFACE ${PJSIP_STATIC_LDFLAGS})
+    # Where the libraries PJSIP itself needs (OpenSSL, Opus) were installed
+    set(MICROSIP_EXTRA_LIBRARY_DIRS "" CACHE STRING "Extra directories to search for PJSIP's dependencies")
+    target_link_directories(pjsip::pjsip INTERFACE ${MICROSIP_EXTRA_LIBRARY_DIRS})
     if(WIN32)
         # What the static OpenSSL needs and PJSIP's .pc file does not list
         target_link_libraries(pjsip::pjsip INTERFACE crypt32 bcrypt advapi32 user32 gdi32 iphlpapi)
@@ -77,7 +80,9 @@ if(WIN32)
     target_link_libraries(microsip_core PUBLIC advapi32)
 endif()
 
-add_executable(microsip_clone
+# qt_add_executable is add_executable on the desktop; on Android it also sets
+# up the packaging of the application into an APK
+qt_add_executable(microsip_clone
     src/main.cpp
     src/resources.qrc
 )
@@ -86,6 +91,26 @@ target_link_libraries(microsip_clone PRIVATE microsip_core)
 set_target_properties(microsip_clone PROPERTIES WIN32_EXECUTABLE ON)
 if(WIN32)
     target_link_options(microsip_clone PRIVATE -Wl,--subsystem,windows)
+endif()
+
+if(ANDROID)
+    # The microphone permission, asked for at run time, uses a private Qt API
+    # in Qt 6.4 (QPermission only arrives in 6.5)
+    target_link_libraries(microsip_clone PRIVATE Qt6::CorePrivate)
+    # Qt's manifest plus the permissions a softphone needs
+    file(READ "${QT6_INSTALL_PREFIX}/src/android/templates/AndroidManifest.xml" manifest)
+    string(REPLACE "<!-- %%INSERT_PERMISSIONS -->"
+        "<uses-permission android:name=\"android.permission.RECORD_AUDIO\"/>\n    <uses-permission android:name=\"android.permission.MODIFY_AUDIO_SETTINGS\"/>\n    <!-- %%INSERT_PERMISSIONS -->"
+        manifest "${manifest}")
+    # Qt's template still carries its example package name
+    string(REPLACE "org.qtproject.example" "dev.antigravity.microsipclone"
+        manifest "${manifest}")
+    file(WRITE "${CMAKE_BINARY_DIR}/android-package/AndroidManifest.xml" "${manifest}")
+    set_target_properties(microsip_clone PROPERTIES
+        QT_ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_BINARY_DIR}/android-package"
+        QT_ANDROID_MIN_SDK_VERSION 23
+        QT_ANDROID_TARGET_SDK_VERSION 33)
+    return() # the loopback test below is a desktop program
 endif()
 
 # Loopback test: the endpoint calls and messages itself, no SIP server needed,

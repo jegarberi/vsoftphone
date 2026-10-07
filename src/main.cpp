@@ -7,6 +7,14 @@
 #include <QQmlApplicationEngine>
 #include <QStandardPaths>
 #include <QWindow>
+#ifdef Q_OS_ANDROID
+#include <QJniEnvironment>
+#include <QtCore/private/qandroidextras_p.h>
+// PJSIP's audio device talks to Android through Java and expects the VM here.
+// It normally learns it in JNI_OnLoad, which Android does not call for a
+// library Qt loads the way it loads the application.
+extern "C" JavaVM *pj_jni_jvm;
+#endif
 #ifdef Q_OS_WIN
 #include <windows.h>
 #else
@@ -66,6 +74,14 @@ int main(int argc, char *argv[]) {
     running.waitForConnected(1000);
     return 0;
   }
+
+#ifdef Q_OS_ANDROID
+  pj_jni_jvm = QJniEnvironment::javaVM();
+  // Without the microphone there are no calls; ask before PJSIP opens it
+  QtAndroidPrivate::requestPermission(
+      QStringLiteral("android.permission.RECORD_AUDIO"))
+      .waitForFinished();
+#endif
 
   // Initialize SipService and StorageService
   StorageService::instance().init();
