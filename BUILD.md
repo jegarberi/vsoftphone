@@ -1,70 +1,74 @@
 # Build Instructions
 
-This guide provides step-by-step instructions to clear and build the Microsip Clone project.
+Linux is the only platform this has been built and tested on.
 
 ## Prerequisites
 
-Ensure you have the following installed on your system:
-- **C++ Compiler**: GCC (Linux), MSVC (Windows), or Clang (macOS) with C++17 support.
-- **CMake**: Version 3.16 or higher.
-- **Conan**: Version 2.x (Package Manager).
-- **Qt6**: Development libraries (Core, Quick, Multimedia, Network).
-- **Python 3**: Required for Conan and virtual environment setup.
+- GCC or Clang with C++17, CMake 3.23+, Python 3 (for Conan 2)
+- Qt 6.4+ development packages: Core, Gui, Qml, Quick, QuickControls2,
+  Network, Multimedia, Sql, plus the QML modules for Controls, Layouts,
+  Dialogs and Qt5Compat.GraphicalEffects
+- Libraries PJSIP is compiled against: OpenSSL, Opus, libvpx, V4L2, ALSA,
+  SDL2, libuuid (openh264, opencore-amr and bcg729 are picked up if present)
+- autoconf, automake, libtool (PJSIP is built from source by Conan)
 
-## Quick Start (Linux)
+The `Dockerfile` lists the exact Debian package names.
 
-### 1. Project Setup
-Ideally, set up a Python virtual environment to manage Conan isolated from your system packages.
+## Build
 
 ```bash
-# Create and activate virtual environment
 python3 -m venv .venv
-source .venv/bin/activate
+.venv/bin/pip install conan
+.venv/bin/conan profile detect   # first time only
 
-# Install Conan
-pip install conan
+./build.sh
 ```
 
-### 2. Install Dependencies
-This project uses Conan to manage PJSIP. We use a local recipe for PJSIP to ensure correct configuration.
+`build.sh` exports the local PJSIP recipe (`conan/pjsip`), builds PJSIP, then
+configures and builds the app with the presets Conan generates. The first run
+takes several minutes because PJSIP is compiled from source.
 
-```bash
-# Detect your profile (first time only)
-conan profile detect --force
+PJSIP's FFmpeg codec is disabled in the recipe: PJSIP does not compile against
+FFmpeg 8 or newer. H.264 is still available through openh264, and VP8 through
+libvpx.
 
-# Export the local PJSIP recipe
-conan export conan/pjsip --version=2.14.1
-
-# Install dependencies (this might take a while as it builds PJSIP from source)
-conan install . --build=missing
-```
-
-### 3. Build the Application
-Once dependencies are installed, use CMake to configure and build the project.
-
-```bash
-# Configure and build with the presets Conan generated
-cmake --preset conan-release
-cmake --build --preset conan-release -j$(nproc)
-```
-
-`./build.sh` runs steps 2 and 3 in one go (it expects Conan in `.venv`).
-
-### 4. Run
-The executable is `build/Release/microsip_clone`. Run it through the wrapper, which sets up the Conan runtime environment:
+## Run
 
 ```bash
 ./run_microsip.sh
 ```
 
+The binary is `build/Release/microsip_clone`; the wrapper sets up the Conan
+runtime environment and makes ALSA use the system configuration.
+
+## Test
+
+```bash
+ctest --preset conan-release
+```
+
+`tests/call_flow_test.cpp` makes the SIP endpoint call and message its own UDP
+port with the null audio device, then loads every QML window. It needs no SIP
+server, network or sound card, and uses a throwaway profile under `~/.qttest`.
+
+To also check media relaying, start a TURN server and name it:
+
+```bash
+MICROSIP_TEST_TURN=host:port MICROSIP_TEST_TURN_USER=user \
+MICROSIP_TEST_TURN_PASS=pass build/Release/call_flow_test
+```
+
+## Docker
+
+```bash
+docker build -t microsip-clone .
+```
+
+Builds the Linux binary and runs the test inside Debian bookworm.
+
 ## Troubleshooting
 
-### PJSIP Build Failures
-If PJSIP fails to build via Conan:
-- Ensure you have `autoconf`, `automake`, and `libtool` installed on Linux.
-- Check the Conan output log for specific compiler errors.
-- Verify that your Python virtual environment is active.
-
-### Qt Issues
-- Make sure `Qt6_DIR` is set correctly if CMake cannot find Qt6.
-- Ensure `qmake` is in your PATH or specify `-DCMAKE_PREFIX_PATH=/path/to/qt6`.
+- **PJSIP fails to build**: read the Conan output; a missing system library or
+  an incompatible FFmpeg are the usual causes.
+- **CMake cannot find Qt6**: pass `-DCMAKE_PREFIX_PATH=/path/to/qt6`.
+- **Stale CMake cache after moving the checkout**: `cmake --fresh --preset conan-release`.

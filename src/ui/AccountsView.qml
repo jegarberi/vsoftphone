@@ -114,9 +114,9 @@ Item {
 
                 CheckBox { id: presenceCheck; text: "Publish Presence" }
                 CheckBox { id: enableStunCheck; text: "Enable STUN" }
-                CheckBox { id: iceCheck; text: "ICE" }
-                TextField { id: stunField; placeholderText: "STUN Server"; Layout.fillWidth: true; visible: iceCheck.checked }
-                TextField { id: turnField; placeholderText: "TURN Server"; Layout.fillWidth: true; visible: iceCheck.checked }
+                TextField { id: stunField; placeholderText: "STUN Server (host:port)"; Layout.fillWidth: true; visible: enableStunCheck.checked }
+                CheckBox { id: iceCheck; text: "ICE: try direct media first, then STUN, then TURN" }
+                TextField { id: turnField; placeholderText: "TURN Server (host:port) - relays media when nothing else works"; Layout.fillWidth: true }
                 TextField { id: turnUserField; placeholderText: "TURN Username"; Layout.fillWidth: true; visible: turnField.text !== "" }
                 TextField { id: turnPassField; placeholderText: "TURN Password"; echoMode: TextInput.Password; Layout.fillWidth: true; visible: turnField.text !== "" }
 

@@ -97,6 +97,22 @@ static void collectQmlWarnings(QtMsgType type, const QMessageLogContext &,
   std::fprintf(stderr, "%s\n", qPrintable(msg));
 }
 
+// ICE state of the call's audio transport; nullptr when ICE is not in use
+static const pjmedia_ice_transport_info *iceInfo(int id,
+                                                 pjmedia_transport_info &tp) {
+  pjmedia_transport_info_init(&tp);
+  if (pjsua_call_get_med_transport_info(id, 0, &tp) != PJ_SUCCESS)
+    return nullptr;
+  return static_cast<const pjmedia_ice_transport_info *>(
+      pjmedia_transport_info_get_spc_info(&tp, PJMEDIA_TRANSPORT_TYPE_ICE));
+}
+
+static bool iceRunning(int id) {
+  pjmedia_transport_info tp;
+  const pjmedia_ice_transport_info *ice = iceInfo(id, tp);
+  return ice && ice->active && ice->sess_state == PJ_ICE_STRANS_STATE_RUNNING;
+}
+
 static int historyCount(const QString &direction) {
   int n = 0;
   for (const auto &rec : StorageService::instance().getCallHistory())
@@ -131,13 +147,11 @@ int main(int argc, char *argv[]) {
 
   // --- account -------------------------------------------------------------
   AccountModel &accounts = AccountModel::instance();
-  accounts.addAccount({{"accountName", "loopback"},
-                       {"username", "tester"},
-                       {"domain", domain},
-                       {"password", "secret"},
-                       {"transport", "UDP"},
-                       {"enableStun", false},
-                       {"ipVersion", 0}});
+  QVariantMap account{{"accountName", "loopback"}, {"username", "tester"},
+                      {"domain", domain},          {"password", "secret"},
+                      {"transport", "UDP"},        {"enableStun", false},
+                      {"ipVersion", 0}};
+  accounts.addAccount(account);
   CHECK(accounts.rowCount() == 1);
   CHECK(accounts.defaultAccountId() == accountId);
   CHECK(sip.getAccount(accountId)); // registered right after being added
@@ -242,6 +256,54 @@ int main(int argc, char *argv[]) {
   CHECK(waitFor([&] { return messages.rowCount() == 2; }));
   sip.sendTypingIndication(accountId, "tester", true);
   pump(200);
+
+  // --- ICE: media negotiates candidates and comes up ------------------------
+  sip.setAutoAnswer(true);
+  account["ice"] = true;
+  accounts.updateAccount(0, account);
+  callService.makeCall(accountId, "tester");
+  CHECK(waitFor([] { return allConfirmed(2); }));
+  CHECK(waitFor([] { return iceRunning(callId(0)); }));
+  callService.hangupCall(callId(0));
+  CHECK(waitFor([] { return CallModel::instance().rowCount() == 0; }));
+
+  // --- TURN: with direct media impossible, audio flows through the relay ----
+  // Needs a TURN server, so it only runs when one is named, e.g. PJSIP's own
+  // pjturn-srv:  MICROSIP_TEST_TURN=127.0.0.1:3478 (user/password 100/100)
+  const QString turnServer = qEnvironmentVariable("MICROSIP_TEST_TURN");
+  if (!turnServer.isEmpty()) {
+    account["ice"] = false; // TURN alone must be enough to enable ICE
+    account["turnServer"] = turnServer;
+    account["turnUser"] = qEnvironmentVariable("MICROSIP_TEST_TURN_USER", "100");
+    account["turnPass"] = qEnvironmentVariable("MICROSIP_TEST_TURN_PASS", "100");
+    accounts.updateAccount(0, account);
+
+    // Offer no host candidates, leaving the relay as the only path
+    const pjsua_acc_id acc = sip.getAccount(accountId)->getId();
+    pj_pool_t *pool = pjsua_pool_create("turn-test", 1000, 1000);
+    pjsua_acc_config accCfg;
+    CHECK(pjsua_acc_get_config(acc, pool, &accCfg) == PJ_SUCCESS);
+    accCfg.ice_cfg_use = PJSUA_ICE_CONFIG_USE_CUSTOM;
+    accCfg.ice_cfg.ice_max_host_cands = 0;
+    CHECK(pjsua_acc_modify(acc, &accCfg) == PJ_SUCCESS);
+    pj_pool_release(pool);
+
+    callService.makeCall(accountId, "tester");
+    CHECK(waitFor([] { return allConfirmed(2); }, 20000));
+    const int relayed = callId(0);
+    CHECK(waitFor([&] { return iceRunning(relayed); }, 20000));
+    pjmedia_transport_info tp;
+    const pjmedia_ice_transport_info *ice = iceInfo(relayed, tp);
+    CHECK(ice->comp[0].lcand_type == PJ_ICE_CAND_TYPE_RELAYED);
+    CHECK(waitFor([&] {
+      pjsua_stream_stat stat;
+      return pjsua_call_get_stream_stat(relayed, 0, &stat) == PJ_SUCCESS &&
+             stat.rtcp.rx.pkt > 0;
+    }));
+    callService.hangupCall(relayed);
+    CHECK(waitFor([] { return CallModel::instance().rowCount() == 0; }));
+    std::puts("call_flow_test: TURN relay verified");
+  }
 
   // --- every window loads against the populated models without QML errors --
   {

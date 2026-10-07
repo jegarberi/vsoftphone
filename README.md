@@ -1,20 +1,29 @@
 # Microsip Clone
 
-## Overview
-A cross-platform SIP softphone built with modern C++ (C++17), Qt6, QML, and PJSIP. This project aims to provide a lightweight, user-friendly VoIP solution with a focus on clean design and robust functionality.
+A SIP softphone built with C++17, Qt 6 / QML and PJSIP. Built and tested on
+Linux.
 
 ## Features
-- **Modern UI**: Clean, responsive interface using Qt Quick Controls 2.
-- **SIP Compatibility**: Powered by PJSIP for robust VoIP handling.
-- **Account Management**: Support for multiple SIP accounts with easy registration toggling.
-- **Cross-Platform**: Designed to run on Linux, Windows, macOS, Android, and iOS.
 
-## Getting Started
-To compile and run the application from source, please refer to [BUILD.md](BUILD.md) for detailed instructions.
+- Multiple SIP accounts over UDP, TCP or TLS, with registration status
+- Calls: answer, hold/resume, mute, DTMF, blind transfer, conference,
+  recording to WAV, ring tone, Do Not Disturb, auto answer
+- NAT traversal per account: STUN, ICE, and TURN relay when direct media is
+  not possible; optional SRTP
+- Instant messages with typing indication, stored in SQLite
+- Contacts with groups and presence, call history with missed calls
+- Audio device, volume, echo cancellation and codec selection, all persisted
+- Re-registers when the network comes back
 
-## Technologies
-- **C++17**: Core application logic.
-- **Qt6 & QML**: User interface and application framework.
-- **PJSIP**: SIP stack and media handling.
-- **Conan**: Dependency management.
-- **CMake**: Build system.
+## Known limits
+
+- Video calls are negotiated and shown in PJSIP's own SDL windows, not inside
+  the call window
+- SIP passwords are stored unencrypted in the local SQLite database (the file
+  is readable by the owner only)
+- TLS does not verify the server certificate
+- No in-call file transfer; no Windows, macOS, Android or iOS builds
+
+## Building
+
+See [BUILD.md](BUILD.md).

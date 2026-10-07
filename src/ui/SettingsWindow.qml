@@ -5,6 +5,8 @@ import QtQuick.Dialogs
 
 ApplicationWindow {
     id: settingsWindow
+    // Theme changes apply live; closing without Save goes back to the saved ones
+    onClosing: Theme.loadSettings()
     width: 600
     height: 700
     title: "Settings"

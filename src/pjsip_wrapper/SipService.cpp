@@ -267,7 +267,12 @@ void SipService::registerAccount(const QString &id, const QVariantMap &config) {
       // IP instead of local IP (fixes 127.0.0.1 in c= line)
       cfg.natConfig.sdpNatRewriteUse = allowIpRewrite ? PJ_TRUE : PJ_FALSE;
     }
-    cfg.natConfig.iceEnabled = config["ice"].toBool() ? PJ_TRUE : PJ_FALSE;
+    // Media falls back in ICE order: direct (host candidates), then the
+    // STUN-mapped address, then the TURN relay. A relay is an ICE candidate,
+    // so configuring TURN turns ICE on.
+    const QString turn = config["turnServer"].toString().trimmed();
+    cfg.natConfig.iceEnabled =
+        (config["ice"].toBool() || !turn.isEmpty()) ? PJ_TRUE : PJ_FALSE;
 
     bool enableStun = config["enableStun"].toBool();
     cfg.natConfig.sipStunUse =
@@ -324,7 +329,6 @@ void SipService::registerAccount(const QString &id, const QVariantMap &config) {
     if (servers)
       delete[] servers;
 
-    QString turn = config["turnServer"].toString();
     if (!turn.isEmpty()) {
       cfg.natConfig.turnEnabled = PJ_TRUE;
       cfg.natConfig.turnServer = turn.toStdString();
