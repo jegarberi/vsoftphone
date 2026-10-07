@@ -61,7 +61,8 @@ Item {
         title: editIndex >= 0 ? "Edit Account" : "Add Account"
         width: 400
         height: 600
-        standardButtons: Dialog.Ok | Dialog.Cancel
+        // Apply stores the account and keeps the dialog open; Save also closes it
+        standardButtons: Dialog.Save | Dialog.Apply | Dialog.Cancel
         modal: true
         x: (parent.width - width) / 2
         y: (parent.height - height) / 2
@@ -139,10 +140,12 @@ Item {
         onOpened: {
             // An account is identified by username@domain: both are required
             // and the pair must be unique
-            standardButton(Dialog.Ok).enabled = Qt.binding(function() {
+            var valid = function() {
                 return usernameField.text.trim() !== "" && domainField.text.trim() !== ""
                     && !accountModel.isDuplicate(editIndex, usernameField.text, domainField.text)
-            })
+            }
+            standardButton(Dialog.Save).enabled = Qt.binding(valid)
+            standardButton(Dialog.Apply).enabled = Qt.binding(valid)
             if (editIndex >= 0) {
                 var data = accountModel.getAccount(editIndex)
                 accountNameField.text = data["accountName"]
@@ -194,7 +197,10 @@ Item {
             }
         }
 
-        onAccepted: {
+        onAccepted: store()
+        onApplied: store()
+
+        function store() {
             var data = {
                 "accountName": accountNameField.text,
                 "server": serverField.text,
@@ -225,6 +231,8 @@ Item {
                 accountModel.updateAccount(editIndex, data)
             } else {
                 accountModel.addAccount(data)
+                // A second Apply must update this account, not add another
+                editIndex = accountModel.rowCount() - 1
             }
         }
     }

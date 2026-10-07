@@ -450,6 +450,8 @@ int main(int argc, char *argv[]) {
       // Only the call and chat windows have these; a no-op elsewhere
       window->setProperty("remoteUri", "tester");
       window->setProperty("remoteParty", "tester");
+      if (QString(file) == "SettingsWindow.qml")
+        CHECK(QMetaObject::invokeMethod(window, "applySettings")); // Apply button
       pump(300);
       delete window;
     }

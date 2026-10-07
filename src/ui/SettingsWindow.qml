@@ -5,11 +5,30 @@ import QtQuick.Dialogs
 
 ApplicationWindow {
     id: settingsWindow
+    // Apply keeps the current values and stays open; Save also closes
+    function applySettings() {
+        Theme.saveSettings()
+        hardwareService.setAudioDevice(micDevCombo.currentIndex, speakerDevCombo.currentIndex)
+        hardwareService.speakerVolume = speakerVolSlider.value
+        hardwareService.micVolume = micVolSlider.value
+        hardwareService.echoCancellation = ecCheckBox.checked
+        hardwareService.saveSettings()
+
+        sipService.stunEnabled = stunCheck.checked
+        sipService.stunServer = stunField.text
+        sipService.turnEnabled = turnCheck.checked
+        sipService.turnServer = turnField.text
+        sipService.turnUser = turnUserField.text
+        sipService.turnPassword = turnPassField.text
+        sipService.rport = rportCheck.checked
+        sipService.mediaRport = mediaRportCheck.checked
+        sipService.applyNetworkSettings()
+    }
+
     // Changes apply live; closing without Save goes back to the saved ones
     onClosing: {
         Theme.loadSettings()
         hardwareService.restoreSettings()
-        sipService.applyNetworkSettings()
     }
     width: 600
     height: 700
@@ -193,7 +212,7 @@ ApplicationWindow {
                 ColumnLayout {
                     width: parent.width
                     Label {
-                        text: "STUN and TURN here are used by accounts that name no server of their own. Changes apply when this window closes."
+                        text: "STUN and TURN here are used by accounts that name no server of their own. They reach the accounts on Apply or Save."
                         wrapMode: Text.Wrap
                         Layout.fillWidth: true
                         color: Theme.textSecondary
@@ -204,14 +223,13 @@ ApplicationWindow {
                             id: stunCheck
                             text: "STUN"
                             checked: sipService.stunEnabled
-                            onToggled: sipService.stunEnabled = checked
                         }
                         TextField {
                             Layout.fillWidth: true
                             enabled: stunCheck.checked
+                            id: stunField
                             placeholderText: "host:port"
                             text: sipService.stunServer
-                            onTextEdited: sipService.stunServer = text
                         }
                     }
                     RowLayout {
@@ -220,14 +238,13 @@ ApplicationWindow {
                             id: turnCheck
                             text: "TURN"
                             checked: sipService.turnEnabled
-                            onToggled: sipService.turnEnabled = checked
                         }
                         TextField {
                             Layout.fillWidth: true
                             enabled: turnCheck.checked
+                            id: turnField
                             placeholderText: "host:port"
                             text: sipService.turnServer
-                            onTextEdited: sipService.turnServer = text
                         }
                     }
                     RowLayout {
@@ -235,27 +252,27 @@ ApplicationWindow {
                         enabled: turnCheck.checked
                         TextField {
                             Layout.fillWidth: true
+                            id: turnUserField
                             placeholderText: "TURN username"
                             text: sipService.turnUser
-                            onTextEdited: sipService.turnUser = text
                         }
                         TextField {
                             Layout.fillWidth: true
+                            id: turnPassField
                             placeholderText: "TURN password"
                             echoMode: TextInput.Password
                             text: sipService.turnPassword
-                            onTextEdited: sipService.turnPassword = text
                         }
                     }
                     CheckBox {
+                        id: rportCheck
                         text: "rport: ask servers to reply to the port our requests come from"
                         checked: sipService.rport
-                        onToggled: sipService.rport = checked
                     }
                     CheckBox {
+                        id: mediaRportCheck
                         text: "rport for media: advertise in SDP the address the server saw us at"
                         checked: sipService.mediaRport
-                        onToggled: sipService.mediaRport = checked
                     }
                 }
             }
@@ -299,14 +316,13 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 Item { Layout.fillWidth: true }
                 Button {
+                    text: "Apply"
+                    onClicked: settingsWindow.applySettings()
+                }
+                Button {
                     text: "Save"
                     onClicked: {
-                        Theme.saveSettings()
-                        hardwareService.setAudioDevice(micDevCombo.currentIndex, speakerDevCombo.currentIndex)
-                        hardwareService.speakerVolume = speakerVolSlider.value
-                        hardwareService.micVolume = micVolSlider.value
-                        hardwareService.echoCancellation = ecCheckBox.checked
-                        hardwareService.saveSettings()
+                        settingsWindow.applySettings()
                         settingsWindow.close()
                     }
                 }
