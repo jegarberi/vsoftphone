@@ -6,9 +6,12 @@
 #include "StorageService.h"
 #include "SipUri.h"
 #include <QDebug>
+#include <QFile>
 #include <QNetworkInformation>
 #include <QSettings>
 #include <pjsua-lib/pjsua.h>
+#include <functional>
+#include <future>
 #include <pjsua2.hpp>
 
 using namespace pj;
@@ -40,6 +43,41 @@ void SipService::setAutoAnswer(bool enabled) {
   emit callHandlingChanged();
 }
 
+bool SipService::tlsVerify() const {
+  return QSettings().value("sip/tlsVerify", true).toBool();
+}
+
+void SipService::setTlsVerify(bool enabled) {
+  if (tlsVerify() == enabled)
+    return;
+  QSettings().setValue("sip/tlsVerify", enabled);
+  emit callHandlingChanged();
+}
+
+// Runs `fn` on the PJSIP worker thread and waits for it.
+//
+// Deleting an account takes PJSIP's global lock and then the lock of each
+// presence dialog. The worker thread takes them the other way round when a
+// SUBSCRIBE arrives, so deleting from the GUI thread can deadlock. Done on the
+// worker itself there is nobody left to take them in the other order.
+static void runOnSipThread(std::function<void()> fn) {
+  struct Job {
+    std::function<void()> fn;
+    std::promise<void> done;
+  } job{std::move(fn), {}};
+  void (*trampoline)(void *) = [](void *p) {
+    Job *j = static_cast<Job *>(p);
+    j->fn();
+    j->done.set_value();
+  };
+  if (pjsua_get_state() != PJSUA_STATE_RUNNING ||
+      pjsua_schedule_timer2(trampoline, &job, 0) != PJ_SUCCESS) {
+    job.fn();
+    return;
+  }
+  job.done.get_future().wait();
+}
+
 SipService::~SipService() { shutdown(); }
 
 void SipService::init() {
@@ -48,7 +86,12 @@ void SipService::init() {
     m_endpoint->libCreate();
 
     EpConfig ep_cfg;
-    ep_cfg.logConfig.level = 4;
+    // Full SIP traces contain Authorization headers, so they are opt-in:
+    // run with MICROSIP_SIP_TRACE=1 when debugging signalling.
+    const bool trace = qEnvironmentVariableIsSet("MICROSIP_SIP_TRACE");
+    ep_cfg.logConfig.level = trace ? 5 : 3;
+    ep_cfg.logConfig.consoleLevel = trace ? 5 : 3;
+    ep_cfg.logConfig.msgLogging = trace;
 
     // Set max calls before libInit
     ep_cfg.uaConfig.maxCalls = 4;
@@ -107,6 +150,15 @@ void SipService::init() {
           m_endpoint->transportCreate(PJSIP_TRANSPORT_UDP, t_cfg);
     }
 
+    // IPv6 signalling, on its own port; absent where the host has no IPv6
+    try {
+      TransportConfig v6_cfg;
+      m_udp6TransportId =
+          m_endpoint->transportCreate(PJSIP_TRANSPORT_UDP6, v6_cfg);
+    } catch (Error &) {
+      qInfo() << "No IPv6 UDP transport available";
+    }
+
     // Attempt TCP on the same port or auto-assign if UDP was auto-assigned
     try {
       m_tcpTransportId =
@@ -116,11 +168,22 @@ void SipService::init() {
                  << QString::fromStdString(err.info());
     }
 
-    // Client-only TLS on an ephemeral port.
-    // ponytail: server certificate is not verified (pjsua default); set
-    // tlsConfig.verifyServer + CA list when that matters.
+    // Client-only TLS on an ephemeral port. The server certificate is checked
+    // against the system CA bundle unless the user turned that off (a PBX
+    // with a self-signed certificate needs it off).
     try {
       TransportConfig tls_cfg;
+      if (tlsVerify()) {
+        tls_cfg.tlsConfig.verifyServer = true;
+        for (const char *bundle : {"/etc/ssl/certs/ca-certificates.crt",
+                                   "/etc/pki/tls/certs/ca-bundle.crt",
+                                   "/etc/ssl/cert.pem"}) {
+          if (QFile::exists(bundle)) {
+            tls_cfg.tlsConfig.CaListFile = bundle;
+            break;
+          }
+        }
+      }
       m_tlsTransportId =
           m_endpoint->transportCreate(PJSIP_TRANSPORT_TLS, tls_cfg);
     } catch (Error &err) {
@@ -152,6 +215,7 @@ void SipService::init() {
       pjsua_transport_info ti;
       pjsua_transport_get_info(m_udpTransportId, &ti);
       AccountConfig local;
+      local.sipConfig.ipv6Use = PJSUA_IPV6_ENABLED_PREFER_IPV4;
       local.idUri =
           "<sip:" +
           std::string(ti.local_name.host.ptr, ti.local_name.host.slen) + ":" +
@@ -207,8 +271,11 @@ void SipService::init() {
 void SipService::shutdown() {
   if (m_endpoint) {
     try {
-      m_localAccount.reset();
-      m_accounts.clear(); // Ensure accounts are deleted before endpoint
+      // Accounts must go before the endpoint
+      runOnSipThread([this] {
+        m_localAccount.reset();
+        m_accounts.clear();
+      });
       m_endpoint->libDestroy();
     } catch (Error &err) {
       qWarning() << "Error destroying PJSIP lib:"
@@ -225,10 +292,12 @@ void SipService::registerAccount(const QString &id, const QVariantMap &config) {
 
   try {
     if (m_accounts.contains(id)) {
-      // An account deletes the buddies attached to it, so release ours first
-      BuddyService::instance().clear();
       BlfService::instance().unsubscribe(id);
-      m_accounts.remove(id);
+      // An account deletes the buddies attached to it, so release ours first
+      runOnSipThread([this, &id] {
+        BuddyService::instance().clear();
+        m_accounts.remove(id);
+      });
     }
 
     AccountConfig cfg;
@@ -247,7 +316,9 @@ void SipService::registerAccount(const QString &id, const QVariantMap &config) {
       cfg.sipConfig.transportId = m_tlsTransportId;
     } else if (transport == "udp") {
       transportParam = ";transport=udp";
-      cfg.sipConfig.transportId = m_udpTransportId;
+      cfg.sipConfig.transportId = config["ipVersion"].toInt() == 1
+                                      ? m_udp6TransportId
+                                      : m_udpTransportId;
     }
 
     QString displayName = config["displayName"].toString().remove('"');
@@ -368,16 +439,16 @@ void SipService::registerAccount(const QString &id, const QVariantMap &config) {
 
     // IP Version (0:IPv4, 1:IPv6, 2:Auto)
     int ipVersion = config["ipVersion"].toInt();
-    if (ipVersion == 0) { // IPv4 Only
+    if (ipVersion == 0) { // IPv4 only
       cfg.sipConfig.ipv6Use = PJSUA_IPV6_DISABLED;
       cfg.mediaConfig.ipv6Use = PJSUA_IPV6_DISABLED;
-    } else if (ipVersion == 1) { // IPv6 Only
-      cfg.sipConfig.ipv6Use = PJSUA_IPV6_ENABLED;
-      cfg.mediaConfig.ipv6Use = PJSUA_IPV6_ENABLED;
-    } else { // Auto (2)
-      // Default pjsip behavior usually prefers IPv4 for media in dual stack
-      // unless configured otherwise
-      cfg.mediaConfig.ipv6Use = PJSUA_IPV6_ENABLED;
+    } else if (ipVersion == 1) { // IPv6 only
+      // ponytail: signalling is IPv6 over UDP only; TCP and TLS accounts still
+      // connect over IPv4. Add TCP6/TLS6 transports if that is ever needed.
+      cfg.sipConfig.ipv6Use = PJSUA_IPV6_ENABLED_USE_IPV6_ONLY;
+      cfg.mediaConfig.ipv6Use = PJSUA_IPV6_ENABLED_USE_IPV6_ONLY;
+    } else { // Auto: IPv4 signalling, media may use IPv6 if IPv4 is not offered
+      cfg.mediaConfig.ipv6Use = PJSUA_IPV6_ENABLED_PREFER_IPV4;
     }
 
     // Only calls started with video carry a video stream (see answerCall)
@@ -402,9 +473,11 @@ void SipService::registerAccount(const QString &id, const QVariantMap &config) {
 
 void SipService::unregisterAccount(const QString &id) {
   if (m_accounts.contains(id)) {
-    BuddyService::instance().clear();
     BlfService::instance().unsubscribe(id);
-    m_accounts.remove(id); // ~Account unregisters and deletes the account
+    runOnSipThread([this, &id] {
+      BuddyService::instance().clear();
+      m_accounts.remove(id); // ~Account unregisters and deletes the account
+    });
     qDebug() << "Unregistered account:" << id;
     emit accountStateChanged(id, false, 0, "Unregistered");
   }
@@ -461,20 +534,20 @@ void MyAccount::onIncomingCall(pj::OnIncomingCallParam &prm) {
 }
 
 void MyAccount::onInstantMessage(pj::OnInstantMessageParam &prm) {
-  QString remoteUri = QString::fromStdString(prm.fromUri);
-  QString content = QString::fromStdString(prm.msgBody);
-
-  qDebug() << "Incoming message from" << remoteUri << ":" << content;
-
-  // Save to database
-  StorageService::instance().addMessage(remoteUri, "Incoming", content);
-
-  // We might want to signal MessageModel to refresh if it's viewing this
-  // contact Or use a global MessageService?
+  const QString from = bareSipUri(QString::fromStdString(prm.fromUri));
+  const QString content = QString::fromStdString(prm.msgBody);
+  StorageService::instance().addMessage(from, "Incoming", content);
+  emit SipService::instance().messageReceived(from, content);
 }
 
+// Delivery report for a message we sent
 void MyAccount::onInstantMessageStatus(pj::OnInstantMessageStatusParam &prm) {
-  qDebug() << "IM Status:" << QString::fromStdString(prm.reason);
+  if (prm.code < 300)
+    return;
+  qWarning() << "Message not delivered:" << prm.code
+             << QString::fromStdString(prm.reason);
+  StorageService::instance().markMessageFailed(
+      QString::fromStdString(prm.toUri), QString::fromStdString(prm.msgBody));
 }
 
 void MyAccount::onTypingIndication(pj::OnTypingIndicationParam &prm) {
@@ -495,28 +568,27 @@ static std::string toSipUri(const QString &destination,
   return ("sip:" + dest).toStdString();
 }
 
-void SipService::sendMessage(const QString &accountId,
+bool SipService::sendMessage(const QString &accountId,
                              const QString &destination,
                              const QString &content) {
   auto acc = getAccount(accountId);
-  if (!acc) {
-    qWarning() << "Account not found for sending message:" << accountId;
-    return;
+  pj_status_t status = PJ_EINVAL;
+  if (acc) {
+    std::string destStr = toSipUri(destination, accountId);
+    std::string contentStr = content.toStdString();
+    pj_str_t pj_dest = pj_str((char *)destStr.c_str());
+    pj_str_t pj_content = pj_str((char *)contentStr.c_str());
+    status = pjsua_im_send(acc->getId(), &pj_dest, nullptr, &pj_content,
+                           nullptr, nullptr);
   }
+  if (status != PJ_SUCCESS)
+    qWarning() << "Could not send message to" << destination << "status"
+               << status;
 
-  std::string destStr = toSipUri(destination, accountId);
-  std::string contentStr = content.toStdString();
-  pj_str_t pj_dest = pj_str((char *)destStr.c_str());
-  pj_str_t pj_content = pj_str((char *)contentStr.c_str());
-
-  pj_status_t status = pjsua_im_send(acc->getId(), &pj_dest, nullptr,
-                                     &pj_content, nullptr, nullptr);
-  if (status != PJ_SUCCESS) {
-    qWarning() << "Error sending SIP message:" << status;
-    return;
-  }
-
-  StorageService::instance().addMessage(destination, "Outgoing", content);
+  // A later delivery failure flips "Outgoing" to "Failed"
+  StorageService::instance().addMessage(
+      destination, status == PJ_SUCCESS ? "Outgoing" : "Failed", content);
+  return status == PJ_SUCCESS;
 }
 
 void SipService::sendTypingIndication(const QString &accountId,

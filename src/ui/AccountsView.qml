@@ -58,7 +58,7 @@ Item {
 
     Dialog {
         id: addAccountDialog
-        title: "Add Account"
+        title: editIndex >= 0 ? "Edit Account" : "Add Account"
         width: 400
         height: 600
         standardButtons: Dialog.Ok | Dialog.Cancel
@@ -138,6 +138,12 @@ Item {
         property int editIndex: -1
 
         onOpened: {
+            // An account is identified by username@domain: both are required
+            // and the pair must be unique
+            standardButton(Dialog.Ok).enabled = Qt.binding(function() {
+                return usernameField.text.trim() !== "" && domainField.text.trim() !== ""
+                    && !accountModel.isDuplicate(editIndex, usernameField.text, domainField.text)
+            })
             if (editIndex >= 0) {
                 var data = accountModel.getAccount(editIndex)
                 accountNameField.text = data["accountName"]

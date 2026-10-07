@@ -1,5 +1,8 @@
+#include <QDir>
 #include <QGuiApplication>
+#include <QLockFile>
 #include <QQmlApplicationEngine>
+#include <QStandardPaths>
 
 #include "QmlSetup.h"
 #include "pjsip_wrapper/SipService.h"
@@ -14,6 +17,17 @@ int main(int argc, char *argv[]) {
   app.setOrganizationName("Antigravity");
   app.setOrganizationDomain("antigravity.dev");
   app.setApplicationName("MicrosipClone");
+
+  // A second copy would register the same accounts from another port
+  const QString dataDir =
+      QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+  QDir().mkpath(dataDir);
+  QLockFile instanceLock(dataDir + "/instance.lock");
+  instanceLock.setStaleLockTime(0);
+  if (!instanceLock.tryLock()) {
+    qCritical("MicrosipClone is already running");
+    return 1;
+  }
 
   // Initialize SipService and StorageService
   StorageService::instance().init();

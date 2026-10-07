@@ -59,6 +59,9 @@ public:
   Q_INVOKABLE QVariantMap getAccount(int index) const;
   Q_INVOKABLE void removeAccount(int index);
   Q_INVOKABLE void toggleActive(int index);
+  // True when another row (not `index`) already is username@domain
+  Q_INVOKABLE bool isDuplicate(int index, const QString &username,
+                               const QString &domain) const;
   // Makes the next active account the one used for calls and messages
   Q_INVOKABLE void selectNextAccount();
 

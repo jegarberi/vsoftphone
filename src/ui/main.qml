@@ -36,6 +36,40 @@ ApplicationWindow {
         Label { id: callFailedLabel; wrapMode: Text.Wrap }
     }
 
+    // Incoming message notice; click to open the conversation
+    Popup {
+        id: messageNotice
+        property string from: ""
+        x: parent.width - width - 16
+        y: 16
+        padding: 12
+        closePolicy: Popup.NoAutoClose
+        Timer { id: messageNoticeTimer; interval: 8000; onTriggered: messageNotice.close() }
+        contentItem: Label {
+            text: "New message from " + messageNotice.from
+            MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: {
+                    messagesTab.remoteParty = messageNotice.from
+                    currentView = 3
+                    messageNotice.close()
+                }
+            }
+        }
+    }
+
+    Connections {
+        target: sipService
+        function onMessageReceived(from, text) {
+            if (currentView === 3 && messagesTab.remoteParty !== "" && from.startsWith(messagesTab.remoteParty))
+                return // already looking at this conversation
+            messageNotice.from = from
+            messageNotice.open()
+            messageNoticeTimer.restart()
+        }
+    }
+
     // Call handling connections
     Connections {
         target: callService

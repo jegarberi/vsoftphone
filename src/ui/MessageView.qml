@@ -8,6 +8,17 @@ Item {
     
     property string remoteParty: ""
     property bool isRemoteTyping: false
+    property var conversations: storageService.conversations()
+
+    onRemotePartyChanged: recipientBox.editText = remoteParty
+
+    Connections {
+        target: storageService
+        function onMessagesChanged() {
+            root.conversations = storageService.conversations()
+            recipientBox.editText = root.remoteParty
+        }
+    }
 
     MessageModel {
         id: messageModel
@@ -18,11 +29,15 @@ Item {
         anchors.fill: parent
         anchors.margins: 10
 
-        TextField {
+        // Pick an existing conversation or type a new recipient
+        ComboBox {
+            id: recipientBox
             Layout.fillWidth: true
-            text: root.remoteParty
-            placeholderText: "Recipient (number or user@host)"
-            onEditingFinished: root.remoteParty = text
+            editable: true
+            model: root.conversations
+            onActivated: root.remoteParty = currentText
+            onAccepted: root.remoteParty = editText
+            Component.onCompleted: editText = root.remoteParty
         }
 
         ListView {
@@ -36,10 +51,11 @@ Item {
                 
                 contentItem: ColumnLayout {
                     Label {
-                        text: model.direction
                         font.bold: true
                         font.pixelSize: 10
-                        color: model.direction === "Incoming" ? "blue" : "green"
+                        text: model.direction === "Failed" ? "Not delivered" : model.direction
+                        color: model.direction === "Incoming" ? "blue"
+                             : model.direction === "Failed" ? "red" : "green"
                     }
                     Label {
                         text: model.content
@@ -114,7 +130,7 @@ Item {
     Connections {
         target: sipService
         function onTypingIndicationReceived(fromUri, isTyping) {
-            if (fromUri.includes(remoteParty)) {
+            if (remoteParty !== "" && fromUri.includes(remoteParty)) {
                 isRemoteTyping = isTyping
             }
         }

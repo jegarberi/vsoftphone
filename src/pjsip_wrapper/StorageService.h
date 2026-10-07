@@ -2,10 +2,12 @@
 #define STORAGESERVICE_H
 
 #include <QDateTime>
+#include <QHash>
 #include <QObject>
 #include <QSqlDatabase>
 #include <QSqlError>
 #include <QSqlQuery>
+#include <QStringList>
 #include <QVariantList>
 
 struct CallRecord {
@@ -88,6 +90,10 @@ public:
   void addMessage(const QString &remoteParty, const QString &direction,
                   const QString &content);
   QList<MessageRecord> getMessages(const QString &remoteParty);
+  // Marks our latest matching outgoing message as not delivered
+  void markMessageFailed(const QString &toUri, const QString &content);
+  // Everyone we have exchanged messages with, most recent first
+  Q_INVOKABLE QStringList conversations();
 
 signals:
   void callHistoryChanged();
@@ -96,6 +102,14 @@ signals:
 private:
   explicit StorageService(QObject *parent = nullptr);
   ~StorageService();
+
+  // Passwords live in the desktop keyring when there is one, leaving the
+  // database column empty; otherwise they stay in the database.
+  QString secretKey(int accountId, const char *field) const;
+  QString loadSecret(int accountId, const char *field, const QString &dbValue);
+  QString protectSecret(int accountId, const char *field,
+                        const QString &value);
+  QHash<QString, QString> m_secrets; // saves a keyring round trip per read
 
   QSqlDatabase database() const;
   QString m_dbPath;

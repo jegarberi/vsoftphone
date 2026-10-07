@@ -1,8 +1,9 @@
 from conan import ConanFile
 from conan.tools.gnu import Autotools, AutotoolsToolchain, PkgConfigDeps
-from conan.tools.files import get, rmdir, copy
+from conan.tools.files import get
 from conan.tools.layout import basic_layout
 import os
+import subprocess
 
 class Pjsip(ConanFile):
     name = "pjsip"
@@ -53,22 +54,18 @@ class Pjsip(ConanFile):
             "ac_v4l2_ldflags=-lv4l2"
         ])
         
-        # Ensure system headers are found and macros are set
+        # SDL2 and V4L2 come from the system; ask pkg-config where they are
+        def pkg_config(*args):
+            return subprocess.check_output(["pkg-config", *args], text=True).split()
+
         tc.extra_cflags.extend([
             "-DPJ_AUTOCONF=1",
             "-DPJMEDIA_HAS_VIDEO=1",
             "-DPJMEDIA_VIDEO_DEV_HAS_V4L2=1",
             "-DPJMEDIA_VIDEO_DEV_HAS_SDL=1",
-            "-I/usr/include/SDL2" # Explicitly help it find SDL2 headers
-        ])
+        ] + pkg_config("--cflags", "sdl2", "libv4l2"))
+        tc.extra_ldflags.extend(pkg_config("--libs", "sdl2", "libv4l2"))
 
-        # Gentoo-specific: Ensure /usr/lib64 is searched and libs are linked
-        tc.extra_ldflags.extend([
-            "-L/usr/lib64",
-            "-lSDL2",
-            "-lv4l2"
-        ])
-        
         tc.generate()
         
         deps = PkgConfigDeps(self)
@@ -78,7 +75,7 @@ class Pjsip(ConanFile):
         autotools = Autotools(self)
         try:
             autotools.configure()
-        except:
+        except Exception:
             self.run("cat config.log")
             raise
 

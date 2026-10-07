@@ -17,8 +17,11 @@ HardwareService::HardwareService(QObject *parent)
 void HardwareService::init(pj::Endpoint *endpoint) {
   m_endpoint = endpoint;
   refreshDevices();
+  restoreSettings();
+}
 
-  // Restore saved audio settings; devices are matched by name
+// Devices are matched by name: their indices change as hardware comes and goes
+void HardwareService::restoreSettings() {
   QSettings settings;
   int capture = m_audioCaptureDevices.indexOf(
       settings.value("audio/capture").toString());
@@ -34,6 +37,17 @@ void HardwareService::init(pj::Endpoint *endpoint) {
     setEchoCancellation(settings.value("audio/echoCancellation").toBool());
 }
 
+void HardwareService::saveSettings() {
+  QSettings settings;
+  settings.setValue("audio/capture",
+                    m_audioCaptureDevices.value(m_captureIndex));
+  settings.setValue("audio/playback",
+                    m_audioPlaybackDevices.value(m_playbackIndex));
+  settings.setValue("audio/speakerVolume", speakerVolume());
+  settings.setValue("audio/micVolume", micVolume());
+  settings.setValue("audio/echoCancellation", m_echoCancellation);
+}
+
 void HardwareService::refreshDevices() {
   if (!m_endpoint)
     return;
@@ -43,6 +57,7 @@ void HardwareService::refreshDevices() {
   m_playbackDeviceIndices.clear();
   m_captureDeviceIndices.clear();
   m_videoDevices.clear();
+  m_videoDeviceIndices.clear();
   m_audioCodecs.clear();
   m_videoCodecs.clear();
 
@@ -51,6 +66,14 @@ void HardwareService::refreshDevices() {
     AudDevManager &adm = m_endpoint->audDevManager();
     AudioDevInfoVector2 audioDevs = adm.enumDev2();
     qDebug() << "HardwareService: Found" << audioDevs.size() << "audio devices";
+
+    // First entry follows the system's default device (PJSIP's -1 and -2)
+    if (!audioDevs.empty()) {
+      m_audioCaptureDevices.append("System default");
+      m_captureDeviceIndices.append(PJMEDIA_AUD_DEFAULT_CAPTURE_DEV);
+      m_audioPlaybackDevices.append("System default");
+      m_playbackDeviceIndices.append(PJMEDIA_AUD_DEFAULT_PLAYBACK_DEV);
+    }
 
     for (unsigned i = 0; i < audioDevs.size(); ++i) {
       const AudioDevInfo &info = audioDevs[i];
@@ -85,7 +108,10 @@ void HardwareService::refreshDevices() {
       QString driver = QString::fromStdString(info.driver);
       QString friendlyName =
           driver.isEmpty() ? name : QString("%1 (%2)").arg(name, driver);
+      if (info.dir == PJMEDIA_DIR_RENDER)
+        continue; // a renderer is not a camera
       m_videoDevices.append(friendlyName);
+      m_videoDeviceIndices.append(i);
       qDebug() << " - Video Device:" << friendlyName;
     }
 
@@ -124,7 +150,6 @@ void HardwareService::setAudioDevice(int captureIdx, int playbackIdx) {
         m_endpoint->audDevManager().setCaptureDev(pjCaptureIdx);
       }
       m_captureIndex = captureIdx;
-      QSettings().setValue("audio/capture", m_audioCaptureDevices[captureIdx]);
     }
     if (playbackIdx >= 0 && playbackIdx < m_playbackDeviceIndices.size()) {
       int pjPlaybackIdx = m_playbackDeviceIndices[playbackIdx];
@@ -134,8 +159,6 @@ void HardwareService::setAudioDevice(int captureIdx, int playbackIdx) {
         m_endpoint->audDevManager().setPlaybackDev(pjPlaybackIdx);
       }
       m_playbackIndex = playbackIdx;
-      QSettings().setValue("audio/playback",
-                           m_audioPlaybackDevices[playbackIdx]);
     }
   } catch (Error &err) {
     qWarning() << "Error setting audio device:"
@@ -236,7 +259,11 @@ void HardwareService::startVideoPreview(int devIdx) {
   try {
     stopVideoPreview();
 
-    // Check if device index is valid
+    // devIdx is a position in the camera list shown to the user
+    if (devIdx >= m_videoDeviceIndices.size())
+      devIdx = -1;
+    if (devIdx >= 0)
+      devIdx = m_videoDeviceIndices[devIdx];
     if (devIdx < 0) {
       qWarning() << "HardwareService: Invalid video device index" << devIdx;
       return;
@@ -322,7 +349,6 @@ void HardwareService::setSpeakerVolume(float volume) {
   try {
     unsigned vol = static_cast<unsigned>(volume * 100);
     m_endpoint->audDevManager().setOutputVolume(vol);
-    QSettings().setValue("audio/speakerVolume", volume);
     emit volumeChanged();
   } catch (...) {
   }
@@ -345,7 +371,6 @@ void HardwareService::setMicVolume(float volume) {
   try {
     unsigned vol = static_cast<unsigned>(volume * 100);
     m_endpoint->audDevManager().setInputVolume(vol);
-    QSettings().setValue("audio/micVolume", volume);
     emit volumeChanged();
   } catch (...) {
   }
@@ -359,7 +384,6 @@ void HardwareService::setEchoCancellation(bool enabled) {
   try {
     m_endpoint->audDevManager().setEcOptions(enabled ? 200 : 0, 0);
     m_echoCancellation = enabled;
-    QSettings().setValue("audio/echoCancellation", enabled);
     emit echoCancellationChanged();
   } catch (...) {
   }

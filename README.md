@@ -5,7 +5,8 @@ Linux.
 
 ## Features
 
-- Multiple SIP accounts over UDP, TCP or TLS, with registration status
+- Multiple SIP accounts over UDP, TCP or TLS (server certificate verified by
+  default), with registration status
 - Calls: answer, hold/resume, mute, DTMF, blind transfer, conference,
   recording to WAV, ring tone, Do Not Disturb, auto answer
 - Direct IP calls (dial an IP address, with or without an account)
@@ -22,9 +23,12 @@ Linux.
 
 - Video calls are negotiated and shown in PJSIP's own SDL windows, not inside
   the call window
-- SIP passwords are stored unencrypted in the local SQLite database (the file
-  is readable by the owner only)
-- TLS does not verify the server certificate
+- SIP passwords are kept in the desktop keyring when libsecret and a keyring
+  service are available; otherwise they stay unencrypted in the local SQLite
+  database (the file is readable by the owner only)
+- "IPv6 only" accounts use IPv6 signalling over UDP only
+- Busy lamp fields are verified against sample NOTIFY bodies, not against a
+  BroadWorks server
 - No in-call file transfer; no Windows, macOS, Android or iOS builds
 
 ## Building

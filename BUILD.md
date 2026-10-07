@@ -10,6 +10,7 @@ Linux is the only platform this has been built and tested on.
   Dialogs and Qt5Compat.GraphicalEffects
 - Libraries PJSIP is compiled against: OpenSSL, Opus, libvpx, V4L2, ALSA,
   SDL2, libuuid (openh264, opencore-amr and bcg729 are picked up if present)
+- Optional: libsecret, to keep SIP passwords in the desktop keyring
 - autoconf, automake, libtool (PJSIP is built from source by Conan)
 
 The `Dockerfile` lists the exact Debian package names.
@@ -40,6 +41,9 @@ libvpx.
 
 The binary is `build/Release/microsip_clone`; the wrapper sets up the Conan
 runtime environment and makes ALSA use the system configuration.
+
+To see the SIP messages on the console, run with `MICROSIP_SIP_TRACE=1`. It is
+off by default because the trace contains `Authorization` headers.
 
 ## Test
 

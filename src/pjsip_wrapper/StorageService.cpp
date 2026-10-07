@@ -1,4 +1,5 @@
 #include "StorageService.h"
+#include "Keyring.h"
 #include "SipUri.h"
 #include <QDebug>
 #include <QDir>
@@ -36,6 +37,49 @@ QSqlDatabase StorageService::database() const {
                 << QThread::currentThreadId() << ":" << db.lastError().text();
   }
   return db;
+}
+
+QString StorageService::secretKey(int accountId, const char *field) const {
+  return QString("%1#%2/%3").arg(m_dbPath).arg(accountId).arg(field);
+}
+
+// Returns what to write in the database column: nothing once the keyring has
+// taken the secret, the secret itself when there is no keyring.
+QString StorageService::protectSecret(int accountId, const char *field,
+                                      const QString &value) {
+  const QString key = secretKey(accountId, field);
+  m_secrets[key] = value;
+  if (value.isEmpty()) {
+    Keyring::clear(key);
+    return value;
+  }
+  return Keyring::store(key, value) ? QString() : value;
+}
+
+QString StorageService::loadSecret(int accountId, const char *field,
+                                   const QString &dbValue) {
+  const QString key = secretKey(accountId, field);
+  auto cached = m_secrets.constFind(key);
+  if (cached != m_secrets.constEnd())
+    return *cached;
+
+  QString value = dbValue;
+  if (!dbValue.isEmpty()) {
+    // Plaintext from an older version, or from a time without a keyring:
+    // move it over. `field` is one of our own column names.
+    if (protectSecret(accountId, field, dbValue).isEmpty()) {
+      QSqlQuery query(database());
+      query.prepare(QString("UPDATE accounts SET %1 = '' WHERE id = :id")
+                        .arg(QLatin1String(field)));
+      query.bindValue(":id", accountId);
+      query.exec();
+    }
+  } else {
+    bool found = false;
+    value = Keyring::lookup(key, &found);
+  }
+  m_secrets[key] = value;
+  return value;
 }
 
 bool StorageService::init() {
@@ -259,7 +303,11 @@ void StorageService::addAccount(const AccountRecord &acc) {
 
   if (!query.exec()) {
     qWarning() << "Error adding account:" << query.lastError().text();
+    return;
   }
+  const int id = query.lastInsertId().toInt();
+  loadSecret(id, "password", acc.password);
+  loadSecret(id, "turnPass", acc.turnPass);
 }
 
 void StorageService::updateAccount(const AccountRecord &acc) {
@@ -280,7 +328,7 @@ void StorageService::updateAccount(const AccountRecord &acc) {
   query.bindValue(":un", acc.username);
   query.bindValue(":dn", acc.domain);
   query.bindValue(":ln", acc.login);
-  query.bindValue(":pw", acc.password);
+  query.bindValue(":pw", protectSecret(acc.id, "password", acc.password));
   query.bindValue(":dn_name", acc.displayName);
   query.bindValue(":tr", acc.transport);
   query.bindValue(":rr", acc.registerRefresh);
@@ -289,7 +337,7 @@ void StorageService::updateAccount(const AccountRecord &acc) {
   query.bindValue(":ss", acc.stunServer);
   query.bindValue(":ts", acc.turnServer);
   query.bindValue(":tu", acc.turnUser);
-  query.bindValue(":tp", acc.turnPass);
+  query.bindValue(":tp", protectSecret(acc.id, "turnPass", acc.turnPass));
   query.bindValue(":sm", acc.srtpMode);
   query.bindValue(":ar", acc.allowIpRewrite);
   query.bindValue(":anat", acc.autoNat);
@@ -308,6 +356,10 @@ void StorageService::updateAccount(const AccountRecord &acc) {
 
 void StorageService::removeAccount(int id) {
   QSqlQuery query(database());
+  for (const char *field : {"password", "turnPass"}) {
+    Keyring::clear(secretKey(id, field));
+    m_secrets.remove(secretKey(id, field));
+  }
   query.prepare("DELETE FROM accounts WHERE id = :id");
   query.bindValue(":id", id);
   if (!query.exec()) {
@@ -356,6 +408,11 @@ QList<AccountRecord> StorageService::getAccounts() {
       list.append(rec);
     }
   }
+  // After the loop: moving a secret writes to the table being read
+  for (AccountRecord &rec : list) {
+    rec.password = loadSecret(rec.id, "password", rec.password);
+    rec.turnPass = loadSecret(rec.id, "turnPass", rec.turnPass);
+  }
   return list;
 }
 
@@ -381,4 +438,38 @@ QList<MessageRecord> StorageService::getMessages(const QString &remoteParty) {
     }
   }
   return list;
+}
+
+void StorageService::markMessageFailed(const QString &toUri,
+                                       const QString &content) {
+  const QString full = bareSipUri(toUri);
+  QSqlQuery query(database());
+  // The row may be keyed by the bare number the user typed
+  query.prepare("UPDATE messages SET direction = 'Failed' WHERE id = ("
+                "SELECT MAX(id) FROM messages WHERE direction = 'Outgoing' "
+                "AND content = :content AND (remoteParty = :full "
+                "OR :full2 LIKE remoteParty || '@%'))");
+  query.bindValue(":content", content);
+  query.bindValue(":full", full);
+  query.bindValue(":full2", full);
+  if (!query.exec())
+    qWarning() << "Error marking message failed:" << query.lastError().text();
+  emit messagesChanged();
+}
+
+QStringList StorageService::conversations() {
+  QStringList parties;
+  QSqlQuery query(database());
+  if (query.exec("SELECT remoteParty FROM messages GROUP BY remoteParty "
+                 "ORDER BY MAX(id) DESC")) {
+    while (query.next())
+      parties.append(query.value(0).toString());
+  }
+  // "1001@pbx" belongs to the conversation "1001" when that one exists
+  QStringList result;
+  for (const QString &party : parties) {
+    if (!party.contains('@') || !parties.contains(party.section('@', 0, 0)))
+      result.append(party);
+  }
+  return result;
 }

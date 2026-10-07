@@ -147,6 +147,7 @@ void CallService::makeCall(const QString &accountId,
 
   qInfo() << "Making call to:" << dest;
 
+  holdOthers(-1);
   try {
     call->makeCall(dest.toStdString(), prm);
     addCall(call);
@@ -167,6 +168,7 @@ void CallService::answerCall(int callId) {
     prm.opt.audioCount = 1;
     prm.opt.videoCount = 0;
     prm.statusCode = PJSIP_SC_OK;
+    holdOthers(callId);
     try {
       m_activeCalls[callId]->answer(prm);
     } catch (Error &err) {
@@ -197,6 +199,7 @@ void CallService::removeCall(int callId) {
   m_activeCalls.remove(callId);
   m_conferenceParticipants.remove(callId);
   m_mutedCalls.remove(callId);
+  m_heldCalls.remove(callId);
   m_recorders.erase(callId);
   setRinging(callId, false);
   CallModel::instance().removeCall(callId);
@@ -210,6 +213,29 @@ void CallService::toggleMute(int callId) {
   handleMediaState(callId);
 }
 
+// One conversation at a time: starting or answering a call holds the others,
+// except those the user joined into a conference.
+void CallService::holdOthers(int exceptCallId) {
+  const QList<int> ids = m_activeCalls.keys();
+  for (int id : ids) {
+    if (id == exceptCallId || m_heldCalls.contains(id) ||
+        m_conferenceParticipants.contains(id))
+      continue;
+    try {
+      if (m_activeCalls[id]->getInfo().state == PJSIP_INV_STATE_CONFIRMED)
+        holdCall(id);
+    } catch (Error &) {
+    }
+  }
+}
+
+QString CallService::recordingsDir() const {
+  QDir dir(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) +
+           "/recordings");
+  dir.mkpath(".");
+  return dir.absolutePath();
+}
+
 bool CallService::toggleRecording(int callId) {
   if (!m_activeCalls.contains(callId))
     return false;
@@ -217,10 +243,7 @@ bool CallService::toggleRecording(int callId) {
     return false;
 
   try {
-    QDir dir(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) +
-             "/recordings");
-    dir.mkpath(".");
-    const QString file = dir.filePath(
+    const QString file = QDir(recordingsDir()).filePath(
         QDateTime::currentDateTime().toString("yyyyMMdd-HHmmss") +
         QString("-call%1.wav").arg(callId));
     auto recorder = std::make_unique<AudioMediaRecorder>();
@@ -276,6 +299,7 @@ void CallService::holdCall(int callId) {
     try {
       CallOpParam prm(true);
       m_activeCalls[callId]->setHold(prm);
+      m_heldCalls.insert(callId);
       CallModel::instance().updateCallHold(callId, true);
     } catch (Error &err) {
       qWarning() << "Error holding call:" << QString::fromStdString(err.info());
@@ -289,6 +313,7 @@ void CallService::resumeCall(int callId) {
       CallOpParam prm(true);
       prm.opt.flag |= PJSUA_CALL_UNHOLD;
       m_activeCalls[callId]->reinvite(prm);
+      m_heldCalls.remove(callId);
       CallModel::instance().updateCallHold(callId, false);
     } catch (Error &err) {
       qWarning() << "Error resuming call:"
@@ -300,8 +325,17 @@ void CallService::resumeCall(int callId) {
 void CallService::transferCall(int callId, const QString &destination) {
   if (m_activeCalls.contains(callId)) {
     try {
+      // A bare extension is on the same server as the call: our own domain,
+      // or the far end's host for a direct IP call
+      QString target = bareSipUri(destination);
+      if (!target.contains('@') && !hasIpHost(target)) {
+        const CallInfo ci = m_activeCalls[callId]->getInfo();
+        const QString local = bareSipUri(QString::fromStdString(ci.localUri));
+        const QString remote = bareSipUri(QString::fromStdString(ci.remoteUri));
+        target += "@" + (local.contains('@') ? local : remote).section('@', -1);
+      }
       CallOpParam prm;
-      m_activeCalls[callId]->xfer(destination.toStdString(), prm);
+      m_activeCalls[callId]->xfer(("sip:" + target).toStdString(), prm);
     } catch (Error &err) {
       qWarning() << "Error transferring call:"
                  << QString::fromStdString(err.info());
@@ -337,6 +371,8 @@ void CallService::addToConference(int callId) {
   if (m_activeCalls.contains(callId)) {
     m_conferenceParticipants.insert(callId);
     CallModel::instance().updateCallConference(callId, true);
+    if (m_heldCalls.contains(callId))
+      resumeCall(callId);
 
     // Dynamic bridging: connect this call to all other conference participants
     auto call = m_activeCalls[callId];

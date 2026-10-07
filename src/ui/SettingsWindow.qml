@@ -5,8 +5,11 @@ import QtQuick.Dialogs
 
 ApplicationWindow {
     id: settingsWindow
-    // Theme changes apply live; closing without Save goes back to the saved ones
-    onClosing: Theme.loadSettings()
+    // Changes apply live; closing without Save goes back to the saved ones
+    onClosing: {
+        Theme.loadSettings()
+        hardwareService.restoreSettings()
+    }
     width: 600
     height: 700
     title: "Settings"
@@ -59,6 +62,16 @@ ApplicationWindow {
                         text: "Auto Answer"
                         checked: sipService.autoAnswer
                         onToggled: sipService.autoAnswer = checked
+                    }
+
+                    CheckBox {
+                        text: "Verify TLS server certificates (applies after restart)"
+                        checked: sipService.tlsVerify
+                        onToggled: sipService.tlsVerify = checked
+                    }
+                    Button {
+                        text: "Open recordings folder"
+                        onClicked: Qt.openUrlExternally("file://" + callService.recordingsDir())
                     }
 
                     RowLayout {
@@ -218,6 +231,7 @@ ApplicationWindow {
                         hardwareService.speakerVolume = speakerVolSlider.value
                         hardwareService.micVolume = micVolSlider.value
                         hardwareService.echoCancellation = ecCheckBox.checked
+                        hardwareService.saveSettings()
                         settingsWindow.close()
                     }
                 }

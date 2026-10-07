@@ -322,6 +322,19 @@ int main(int argc, char *argv[]) {
   sip.sendTypingIndication(accountId, "tester", true);
   pump(200);
 
+  // --- a message that cannot be delivered is shown as failed ---------------
+  MessageModel undeliverable;
+  undeliverable.setCurrentRemoteParty("nobody@invalid.invalid");
+  undeliverable.sendMessage("lost");
+  CHECK(waitFor([&] {
+    return undeliverable.rowCount() == 1 &&
+           undeliverable.data(undeliverable.index(0),
+                              MessageModel::DirectionRole) == "Failed";
+  }, 40000));
+  // "tester@127.0.0.1" (incoming) is folded into the conversation "tester"
+  CHECK(StorageService::instance().conversations() ==
+        QStringList({"nobody@invalid.invalid", "tester"}));
+
   // --- ICE: media negotiates candidates and comes up ------------------------
   sip.setAutoAnswer(true);
   account["ice"] = true;
@@ -370,6 +383,15 @@ int main(int argc, char *argv[]) {
     std::puts("call_flow_test: TURN relay verified");
   }
 
+  // --- account deleted while a SUBSCRIBE to it is in flight ------------------
+  // A contact on our own endpoint makes us both watcher and presentity, so
+  // every account rebuild races an incoming SUBSCRIBE against the deletion.
+  contacts.addContact("Self", "tester");
+  for (int i = 0; i < 15; ++i) {
+    accounts.updateAccount(0, account);
+    pump(30);
+  }
+
   // --- every window loads against the populated models without QML errors --
   {
     qInstallMessageHandler(collectQmlWarnings);
@@ -399,10 +421,11 @@ int main(int argc, char *argv[]) {
   accounts.removeAccount(0);
   CHECK(accounts.rowCount() == 0);
   CHECK(!sip.getAccount(accountId));
-  contacts.removeContact(1); // server-provided BLF row: not removable
-  CHECK(contacts.rowCount() == 2);
+  CHECK(contacts.rowCount() == 3); // Self, Alice, and the BLF row
+  contacts.removeContact(2); // server-provided BLF row: not removable
+  CHECK(contacts.rowCount() == 3);
   contacts.removeContact(0);
-  CHECK(contacts.rowCount() == 1);
+  CHECK(contacts.rowCount() == 2);
   pump(200);
 
   // --- direct IP call with no SIP account at all ---------------------------
@@ -417,6 +440,38 @@ int main(int argc, char *argv[]) {
   CHECK(failures == 1);
   callService.hangupCall(callId(0));
   CHECK(waitFor([] { return CallModel::instance().rowCount() == 0; }));
+
+  // --- starting a second call puts the first on hold ------------------------
+  sip.setAutoAnswer(true);
+  callService.makeCall("", "sip:" + domain);
+  CHECK(waitFor([] { return allConfirmed(2); }));
+  CallModel &calls = CallModel::instance();
+  CHECK(!calls.data(calls.index(0), CallModel::IsHeldRole).toBool());
+  callService.makeCall("", "sip:" + domain);
+  CHECK(calls.data(calls.index(0), CallModel::IsHeldRole).toBool());
+  CHECK(waitFor([] { return CallModel::instance().rowCount() == 4; }));
+  pump(500);
+  while (calls.rowCount() > 0) {
+    const int rows = calls.rowCount();
+    callService.hangupCall(callId(0));
+    CHECK(waitFor([&] { return calls.rowCount() < rows; }));
+  }
+
+  // --- IPv6 call, where the host has IPv6 -----------------------------------
+  pjsua_transport_id transports[8];
+  unsigned transportCount = 8;
+  pjsua_enum_transports(transports, &transportCount);
+  for (unsigned i = 0; i < transportCount; ++i) {
+    pjsua_transport_info info;
+    if (pjsua_transport_get_info(transports[i], &info) != PJ_SUCCESS ||
+        info.type != PJSIP_TRANSPORT_UDP6)
+      continue;
+    callService.makeCall("", QString("[::1]:%1").arg(info.local_name.port));
+    CHECK(waitFor([] { return allConfirmed(2); }));
+    callService.hangupCall(callId(0));
+    CHECK(waitFor([] { return CallModel::instance().rowCount() == 0; }));
+    std::puts("call_flow_test: IPv6 call verified");
+  }
 
   std::puts("call_flow_test: ALL OK");
   return 0; // normal exit also exercises the shutdown order

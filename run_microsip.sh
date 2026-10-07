@@ -1,4 +1,5 @@
 #!/bin/bash
+cd "$(dirname "$0")" || exit 1
 # Source the Conan environment (for Qt, ffmpeg, etc.)
 source build/Release/generators/conanrun.sh
 

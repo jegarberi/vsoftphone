@@ -21,6 +21,7 @@ add_library(microsip_core STATIC
     src/pjsip_wrapper/BuddyService.cpp
     src/pjsip_wrapper/BlfService.cpp
     src/pjsip_wrapper/StorageService.cpp
+    src/pjsip_wrapper/Keyring.cpp
     src/models/AccountModel.cpp
     src/models/ContactsModel.cpp
     src/models/HistoryModel.cpp
@@ -51,6 +52,16 @@ target_compile_definitions(microsip_core PUBLIC
 
 if(NOT MSVC)
     target_compile_options(microsip_core PRIVATE -Wall -Wextra)
+endif()
+
+# Optional: keep SIP passwords in the desktop keyring instead of the database
+find_package(PkgConfig)
+if(PkgConfig_FOUND)
+    pkg_check_modules(LIBSECRET IMPORTED_TARGET libsecret-1)
+endif()
+if(LIBSECRET_FOUND)
+    target_link_libraries(microsip_core PUBLIC PkgConfig::LIBSECRET)
+    target_compile_definitions(microsip_core PUBLIC HAVE_LIBSECRET=1)
 endif()
 
 add_executable(microsip_clone

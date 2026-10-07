@@ -53,6 +53,11 @@ public:
   bool echoCancellation() const;
   void setEchoCancellation(bool enabled);
 
+  // Devices, volumes and echo cancellation apply at once but are only kept
+  // across restarts when saved; restoring goes back to what was saved
+  Q_INVOKABLE void saveSettings();
+  Q_INVOKABLE void restoreSettings();
+
   Q_INVOKABLE void startAudioTest(int captureIdx, int playbackIdx);
   Q_INVOKABLE void stopAudioTest();
 
@@ -76,6 +81,7 @@ private:
   QList<int> m_playbackDeviceIndices;
   QList<int> m_captureDeviceIndices;
   QStringList m_videoDevices;
+  QList<int> m_videoDeviceIndices;
   QStringList m_audioCodecs;
   QStringList m_videoCodecs;
   QStringList m_disabledCodecs;

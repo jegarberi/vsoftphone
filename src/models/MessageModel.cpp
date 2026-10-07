@@ -75,7 +75,7 @@ void MessageModel::sendMessage(const QString &content) {
   if (m_currentRemoteParty.isEmpty() || content.isEmpty())
     return;
 
-  // SipService stores the message once it has been handed to the stack
+  // SipService stores the message, as failed if it could not be sent
   SipService::instance().sendMessage(AccountModel::instance().defaultAccountId(),
                                      m_currentRemoteParty, content);
 }

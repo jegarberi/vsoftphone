@@ -34,6 +34,9 @@ class SipService : public QObject {
                  callHandlingChanged)
   Q_PROPERTY(bool autoAnswer READ autoAnswer WRITE setAutoAnswer NOTIFY
                  callHandlingChanged)
+  // Checked when the TLS transport is created, so a change needs a restart
+  Q_PROPERTY(bool tlsVerify READ tlsVerify WRITE setTlsVerify NOTIFY
+                 callHandlingChanged)
 
 public:
   static SipService &instance();
@@ -44,7 +47,8 @@ public:
   void registerAccount(const QString &id, const QVariantMap &config);
   void unregisterAccount(const QString &id);
 
-  void sendMessage(const QString &accountId, const QString &destination,
+  // False when the message could not even be handed to the SIP stack
+  bool sendMessage(const QString &accountId, const QString &destination,
                    const QString &content);
   Q_INVOKABLE void sendTypingIndication(const QString &accountId,
                             const QString &destination, bool isTyping);
@@ -60,6 +64,8 @@ public:
   void setDoNotDisturb(bool enabled);
   bool autoAnswer() const { return m_autoAnswer; }
   void setAutoAnswer(bool enabled);
+  bool tlsVerify() const;
+  void setTlsVerify(bool enabled);
 
   QList<std::shared_ptr<MyAccount>> getAccounts() const {
     return m_accounts.values();
@@ -75,6 +81,7 @@ signals:
   void accountStateChanged(QString id, bool active, int statusCode,
                            QString statusText);
   void typingIndicationReceived(QString fromUri, bool isTyping);
+  void messageReceived(QString from, QString text);
   void callHandlingChanged();
 
 private:
@@ -91,6 +98,7 @@ private:
   pj::TransportId m_udpTransportId = PJSUA_INVALID_ID;
   pj::TransportId m_tcpTransportId = PJSUA_INVALID_ID;
   pj::TransportId m_tlsTransportId = PJSUA_INVALID_ID;
+  pj::TransportId m_udp6TransportId = PJSUA_INVALID_ID;
   QMap<QString, std::shared_ptr<MyAccount>> m_accounts;
   std::shared_ptr<MyAccount> m_localAccount;
 };

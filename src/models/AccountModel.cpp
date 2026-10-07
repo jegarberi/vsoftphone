@@ -275,6 +275,16 @@ void AccountModel::toggleActive(int index) {
   emit defaultAccountIdChanged();
 }
 
+bool AccountModel::isDuplicate(int index, const QString &username,
+                               const QString &domain) const {
+  const QString id = username.trimmed() + "@" + domain.trimmed();
+  for (int i = 0; i < m_accounts.count(); ++i) {
+    if (i != index && keyOf(m_accounts[i]) == id)
+      return true;
+  }
+  return false;
+}
+
 QVariantMap AccountModel::getAccount(int index) const {
   if (index < 0 || index >= m_accounts.count())
     return QVariantMap();
