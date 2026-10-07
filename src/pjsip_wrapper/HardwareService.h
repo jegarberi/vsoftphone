@@ -39,7 +39,10 @@ public:
 
   Q_INVOKABLE void refreshDevices();
   Q_INVOKABLE void setAudioDevice(int captureIdx, int playbackIdx);
-  Q_INVOKABLE void setVideoDevice(int devIdx);
+
+  Q_INVOKABLE bool isCodecEnabled(const QString &codecId) const;
+  Q_INVOKABLE void setCodecEnabled(const QString &codecId, bool enabled);
+  void applyCodecPriorities();
 
   float speakerVolume() const;
   void setSpeakerVolume(float volume);
@@ -75,6 +78,7 @@ private:
   QStringList m_videoDevices;
   QStringList m_audioCodecs;
   QStringList m_videoCodecs;
+  QStringList m_disabledCodecs;
 };
 
 #endif // HARDWARESERVICE_H

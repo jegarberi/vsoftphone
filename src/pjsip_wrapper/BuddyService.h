@@ -10,6 +10,8 @@ class MyBuddy : public pj::Buddy {
 public:
   MyBuddy() {}
   virtual void onBuddyState() override;
+
+  QString number; // the contact's number as stored in ContactsModel
 };
 
 class BuddyService : public QObject {
@@ -17,8 +19,11 @@ class BuddyService : public QObject {
 public:
   static BuddyService &instance();
 
-  void addBuddy(const QString &accountId, const QString &uri);
-  void removeBuddy(const QString &uri);
+  void addBuddy(const QString &accountId, const QString &number);
+  void removeBuddy(const QString &number);
+  // Must run before any pj::Account is destroyed: the account deletes the
+  // buddies attached to it.
+  void clear() { m_buddies.clear(); }
 
 private:
   explicit BuddyService(QObject *parent = nullptr);

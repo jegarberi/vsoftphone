@@ -143,9 +143,60 @@ void HardwareService::setAudioDevice(int captureIdx, int playbackIdx) {
   }
 }
 
-void HardwareService::setVideoDevice(int devIdx) {
-  // PJSIP sets default video device differently if needed,
-  // but often it's done during call or preview.
+// Enabled codecs are ranked so the SDP offer order is stable between runs
+static int codecPriority(const QString &codecId) {
+  static const QStringList preference{"PCMU", "PCMA", "G722", "opus"};
+  int rank = 0;
+  for (int i = 0; i < preference.size(); ++i) {
+    if (codecId.contains(preference[i], Qt::CaseInsensitive))
+      rank = i + 1;
+  }
+  return 128 + rank;
+}
+
+void HardwareService::applyCodecPriorities() {
+  if (!m_endpoint)
+    return;
+
+  QSettings settings;
+  const bool configured = settings.contains("audio/disabledCodecs");
+  m_disabledCodecs = settings.value("audio/disabledCodecs").toStringList();
+  try {
+    const CodecInfoVector2 codecs = m_endpoint->codecEnum2();
+    for (unsigned i = 0; i < codecs.size(); ++i) {
+      const QString id = QString::fromStdString(codecs[i].codecId);
+      // First run: only the common codecs, to keep the SDP small
+      if (!configured && codecPriority(id) == 128 &&
+          !id.contains("telephone-event"))
+        m_disabledCodecs.append(id);
+      m_endpoint->codecSetPriority(
+          codecs[i].codecId,
+          m_disabledCodecs.contains(id) ? 0 : codecPriority(id));
+    }
+  } catch (Error &err) {
+    qWarning() << "Error configuring codecs:"
+               << QString::fromStdString(err.info());
+  }
+}
+
+bool HardwareService::isCodecEnabled(const QString &codecId) const {
+  return !m_disabledCodecs.contains(codecId);
+}
+
+void HardwareService::setCodecEnabled(const QString &codecId, bool enabled) {
+  if (!m_endpoint || enabled == isCodecEnabled(codecId))
+    return;
+  try {
+    m_endpoint->codecSetPriority(codecId.toStdString(),
+                                 enabled ? codecPriority(codecId) : 0);
+    if (enabled)
+      m_disabledCodecs.removeAll(codecId);
+    else
+      m_disabledCodecs.append(codecId);
+    QSettings().setValue("audio/disabledCodecs", m_disabledCodecs);
+  } catch (Error &err) {
+    qWarning() << "Error changing codec:" << QString::fromStdString(err.info());
+  }
 }
 
 void HardwareService::startAudioTest(int captureIdx, int playbackIdx) {

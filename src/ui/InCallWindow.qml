@@ -24,6 +24,7 @@ ApplicationWindow {
     property bool isHeld: false
     property bool isInConference: false
     property bool isMuted: false
+    property bool isRecording: false
     property int callDuration: 0
     property int lastStatus: 0
     property string lastReason: ""
@@ -65,7 +66,7 @@ ApplicationWindow {
             Rectangle {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                color: hasVideo ? "#000000" : Theme.backgroundSecondary
+                color: Theme.backgroundSecondary
                 
                 // Gradient overlay for better text visibility
                 Rectangle {
@@ -77,9 +78,7 @@ ApplicationWindow {
                     }
                 }
                 
-                // Avatar for audio-only calls
                 ColumnLayout {
-                    visible: !hasVideo
                     anchors.centerIn: parent
                     spacing: Theme.spacing6
                     
@@ -90,61 +89,6 @@ ApplicationWindow {
                         Layout.alignment: Qt.AlignHCenter
                     }
                     
-                    // Animated waveform (placeholder)
-                    Row {
-                        spacing: 4
-                        Layout.alignment: Qt.AlignHCenter
-                        
-                        Repeater {
-                            model: 5
-                            Rectangle {
-                                width: 4
-                                height: 20 + Math.random() * 30
-                                radius: 2
-                                color: Theme.accentGreen
-                                opacity: callState === "CONFIRMED" ? 0.8 : 0.3
-                                
-                                SequentialAnimation on height {
-                                    running: callState === "CONFIRMED"
-                                    loops: Animation.Infinite
-                                    NumberAnimation { to: 50; duration: 300 + index * 100 }
-                                    NumberAnimation { to: 20; duration: 300 + index * 100 }
-                                }
-                            }
-                        }
-                    }
-                }
-                
-                // Video placeholder
-                Text {
-                    visible: hasVideo
-                    anchors.centerIn: parent
-                    text: "Remote Video"
-                    color: "white"
-                    font.family: Theme.fontFamily
-                    font.pixelSize: Theme.fontSizeTitle
-                }
-                
-                // Local video preview (floating)
-                Rectangle {
-                    visible: hasVideo
-                    width: 120
-                    height: 160
-                    anchors.right: parent.right
-                    anchors.top: parent.top
-                    anchors.margins: Theme.spacing4
-                    radius: Theme.radiusLarge
-                    color: Theme.backgroundTertiary
-                    border.width: 2
-                    border.color: Theme.border
-                    
-                    Text {
-                        anchors.centerIn: parent
-                        text: "You"
-                        color: Theme.textSecondary
-                        font.family: Theme.fontFamily
-                        font.pixelSize: Theme.fontSizeCaption
-                    }
                 }
                 
                 // Call Info Overlay
@@ -180,22 +124,6 @@ ApplicationWindow {
                         Layout.alignment: Qt.AlignHCenter
                     }
                     
-                    // Connection quality indicator
-                    Row {
-                        visible: callState === "CONFIRMED"
-                        spacing: 2
-                        Layout.alignment: Qt.AlignHCenter
-                        
-                        Repeater {
-                            model: 4
-                            Rectangle {
-                                width: 4
-                                height: 8 + index * 4
-                                radius: 2
-                                color: index < 3 ? Theme.accentGreen : Theme.gray500
-                            }
-                        }
-                    }
                 }
             }
             
@@ -249,14 +177,6 @@ ApplicationWindow {
                             }
                         }
                         
-                        // Video Toggle
-                        ControlButton {
-                            icon: "📹"
-                            label: "Video"
-                            active: hasVideo
-                            enabled: false // Implementation pending
-                        }
-                        
                         // Keypad
                         ControlButton {
                             icon: "#️⃣"
@@ -301,10 +221,13 @@ ApplicationWindow {
                             enabled: callState === "CONFIRMED"
                         }
                         
-                        // More Options
+                        // Record
                         ControlButton {
-                            icon: "⋯"
-                            label: "More"
+                            icon: "⏺"
+                            label: "Record"
+                            active: isRecording
+                            enabled: callState === "CONFIRMED"
+                            onClicked: isRecording = callService.toggleRecording(callId)
                         }
                     }
                     

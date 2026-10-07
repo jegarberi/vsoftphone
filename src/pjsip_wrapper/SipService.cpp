@@ -1,4 +1,5 @@
 #include "SipService.h"
+#include "BuddyService.h"
 #include "CallService.h"
 #include "HardwareService.h"
 #include "StorageService.h"
@@ -11,8 +12,6 @@
 
 using namespace pj;
 #include <QSet>
-
-static QSet<QString> g_activeStunServers;
 
 SipService &SipService::instance() {
   static SipService _instance;
@@ -144,31 +143,13 @@ void SipService::init() {
 
     qDebug() << "PJSIP initialized successfully";
 
-    try {
-      const CodecInfoVector2 &codecs = m_endpoint->codecEnum2();
-      qDebug() << "Available Codecs (Configuring...):";
-      for (unsigned i = 0; i < codecs.size(); ++i) {
-        QString codecId = QString::fromStdString(codecs[i].codecId);
-        int priority = 0;
-        if (codecId.contains("PCMU") || codecId.contains("PCMA") ||
-            codecId.contains("G722") || codecId.contains("opus") ||
-            codecId.contains("telephone-event")) {
-          priority = 128 + i; // Give some priority
-        } else {
-          priority = 0; // Disable others to save SDP space
-        }
-        m_endpoint->codecSetPriority(codecs[i].codecId, priority);
-        qDebug() << " - " << codecId << "priority:" << priority;
-      }
-    } catch (Error &err) {
-      qWarning() << "Error configuring codecs:"
-                 << QString::fromStdString(err.info());
-    }
+    HardwareService::instance().applyCodecPriorities();
 
     // Re-register and refresh transports when the network comes back.
     // ponytail: only sees reachability transitions, not an address change
     // while staying online; watch QNetworkInterface if that turns out to matter.
-    if (QNetworkInformation::load(QNetworkInformation::Feature::Reachability)) {
+    if (QNetworkInformation::loadBackendByFeatures(
+            QNetworkInformation::Feature::Reachability)) {
       connect(QNetworkInformation::instance(),
               &QNetworkInformation::reachabilityChanged, this,
               [this](QNetworkInformation::Reachability reachability) {
@@ -222,7 +203,8 @@ void SipService::registerAccount(const QString &id, const QVariantMap &config) {
 
   try {
     if (m_accounts.contains(id)) {
-      // Already exists, maybe update? For now remove and recreate
+      // An account deletes the buddies attached to it, so release ours first
+      BuddyService::instance().clear();
       m_accounts.remove(id);
     }
 
@@ -371,6 +353,10 @@ void SipService::registerAccount(const QString &id, const QVariantMap &config) {
       cfg.mediaConfig.ipv6Use = PJSUA_IPV6_ENABLED;
     }
 
+    // Only calls started with video carry a video stream (see answerCall)
+    cfg.videoConfig.autoShowIncoming = true;
+    cfg.videoConfig.autoTransmitOutgoing = true;
+
     auto acc = std::make_shared<MyAccount>();
     acc->key = id;
     acc->create(cfg);
@@ -388,11 +374,8 @@ void SipService::registerAccount(const QString &id, const QVariantMap &config) {
 
 void SipService::unregisterAccount(const QString &id) {
   if (m_accounts.contains(id)) {
-    m_accounts.remove(
-        id); // Destructor of MyAccount (if managed properly) should unregister?
-    // pj::Account destructor calls shutdown usually?
-    // Actually we should explicitly set registration to false if we want to
-    // keep object? For now, removing from map destroys the object.
+    BuddyService::instance().clear();
+    m_accounts.remove(id); // ~Account unregisters and deletes the account
     qDebug() << "Unregistered account:" << id;
     emit accountStateChanged(id, false, 0, "Unregistered");
   }
@@ -408,34 +391,42 @@ void MyAccount::onRegState(pj::OnRegStateParam &prm) {
       QString::fromStdString(prm.reason));
 }
 void MyAccount::onIncomingCall(pj::OnIncomingCallParam &prm) {
-  if (SipService::instance().doNotDisturb()) {
-    pjsua_call_answer(prm.callId, PJSIP_SC_BUSY_HERE, nullptr, nullptr);
-    return;
-  }
-
+  // PJSUA2 rejects the call with 500 unless a Call object takes it, so a call
+  // refused by Do Not Disturb still gets one; it ends up in history as Missed.
   auto call = std::make_shared<MyCall>(*this, prm.callId);
   const int callId = prm.callId;
+  const bool rejected = SipService::instance().doNotDisturb();
   QString remoteUri;
   try {
     remoteUri = QString::fromStdString(call->getInfo().remoteUri);
-    CallOpParam ringing;
-    ringing.statusCode = PJSIP_SC_RINGING;
-    call->answer(ringing);
-  } catch (Error &err) {
-    qWarning() << "Error ringing incoming call:"
-               << QString::fromStdString(err.info());
+  } catch (Error &) {
   }
 
-  // PJSIP worker thread: hand the call over to the GUI thread
+  // PJSIP worker thread: hand the call over to the GUI thread. Queued before
+  // answering so it runs ahead of any state change the answer triggers.
   QMetaObject::invokeMethod(
       &CallService::instance(),
-      [call, callId, remoteUri] {
+      [call, callId, remoteUri, rejected] {
         CallService::instance().addCall(call);
+        if (rejected)
+          return;
         emit CallService::instance().incomingCall(callId, remoteUri);
         if (SipService::instance().autoAnswer())
           CallService::instance().answerCall(callId);
       },
       Qt::QueuedConnection);
+
+  try {
+    CallOpParam response;
+    response.statusCode = rejected ? PJSIP_SC_BUSY_HERE : PJSIP_SC_RINGING;
+    if (rejected)
+      call->hangup(response);
+    else
+      call->answer(response);
+  } catch (Error &err) {
+    qWarning() << "Error responding to incoming call:"
+               << QString::fromStdString(err.info());
+  }
 }
 
 void MyAccount::onInstantMessage(pj::OnInstantMessageParam &prm) {

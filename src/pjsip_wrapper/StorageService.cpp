@@ -2,6 +2,7 @@
 #include "SipUri.h"
 #include <QDebug>
 #include <QDir>
+#include <QFile>
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QSqlRecord>
@@ -47,8 +48,10 @@ bool StorageService::init() {
 
   m_dbPath = dir.filePath("microsip.db");
 
-  // Verify connection by creating tables
-  return createTables();
+  const bool ok = createTables();
+  // The database holds SIP passwords: keep it readable by the owner only
+  QFile::setPermissions(m_dbPath, QFile::ReadOwner | QFile::WriteOwner);
+  return ok;
 }
 
 bool StorageService::createTables() {
@@ -65,7 +68,8 @@ bool StorageService::createTables() {
   success &= query.exec("CREATE TABLE IF NOT EXISTS contacts ("
                         "id INTEGER PRIMARY KEY AUTOINCREMENT,"
                         "name TEXT,"
-                        "number TEXT)");
+                        "number TEXT,"
+                        "grp TEXT DEFAULT '')");
 
   success &= query.exec("CREATE TABLE IF NOT EXISTS messages ("
                         "id INTEGER PRIMARY KEY AUTOINCREMENT,"
@@ -108,6 +112,7 @@ bool StorageService::createTables() {
   query.exec("ALTER TABLE accounts ADD COLUMN enableStun BOOLEAN DEFAULT 1");
   query.exec("ALTER TABLE accounts ADD COLUMN ipVersion INTEGER DEFAULT 2");
   query.exec("ALTER TABLE accounts ADD COLUMN rport BOOLEAN DEFAULT 0");
+  query.exec("ALTER TABLE contacts ADD COLUMN grp TEXT DEFAULT ''");
 
   if (!success) {
     qCritical() << "Error creating tables:" << query.lastError().text();
@@ -158,11 +163,14 @@ void StorageService::clearHistory() {
   }
 }
 
-void StorageService::addContact(const QString &name, const QString &number) {
+void StorageService::addContact(const QString &name, const QString &number,
+                                const QString &group) {
   QSqlQuery query(database());
-  query.prepare("INSERT INTO contacts (name, number) VALUES (:name, :number)");
+  query.prepare("INSERT INTO contacts (name, number, grp) VALUES (:name, "
+                ":number, :grp)");
   query.bindValue(":name", name);
   query.bindValue(":number", number);
+  query.bindValue(":grp", group);
   if (!query.exec()) {
     qWarning() << "Error adding contact:" << query.lastError().text();
   }
@@ -180,13 +188,14 @@ void StorageService::removeContact(int id) {
 QList<ContactRecord> StorageService::getContacts() {
   QList<ContactRecord> list;
   QSqlQuery query(database());
-  query.prepare("SELECT id, name, number FROM contacts");
+  query.prepare("SELECT id, name, number, grp FROM contacts ORDER BY grp, name");
   if (query.exec()) {
     while (query.next()) {
       ContactRecord rec;
       rec.id = query.value(0).toInt();
       rec.name = query.value(1).toString();
       rec.number = query.value(2).toString();
+      rec.group = query.value(3).toString();
       list.append(rec);
     }
   }

@@ -59,11 +59,13 @@ ApplicationWindow {
                         onToggled: sipService.autoAnswer = checked
                     }
 
-                    CheckBox { text: "Single Call Mode" }
                     RowLayout {
-                        Label { text: "Ringtone" }
-                        TextField { Layout.fillWidth: true; placeholderText: "Path to ringtone..." }
-                        Button { text: "..." }
+                        Label { text: "Presence" }
+                        ComboBox {
+                            model: ["Online", "Away", "Busy", "Offline"]
+                            currentIndex: Math.max(0, model.indexOf(presenceService.status))
+                            onActivated: presenceService.status = currentText
+                        }
                     }
                 }
             }
@@ -77,16 +79,6 @@ ApplicationWindow {
                     GridLayout {
                         columns: 2
                         Layout.fillWidth: true
-                        Label { 
-                            text: "Ring Device"
-                            color: Theme.textPrimary
-                        }
-                        ComboBox {
-                            id: ringDevCombo
-                            model: hardwareService.audioPlaybackDevices.length > 0 ? hardwareService.audioPlaybackDevices : ["No devices available"]
-                            Layout.fillWidth: true
-                            enabled: hardwareService.audioPlaybackDevices.length > 0
-                        }
                         Label { 
                             text: "Speaker"
                             color: Theme.textPrimary
@@ -144,8 +136,6 @@ ApplicationWindow {
                         onToggled: hardwareService.echoCancellation = checked
                     }
 
-                    CheckBox { text: "Microphone Amplification" }
-                    CheckBox { text: "Software Level Adjustment" }
                     RowLayout {
                         Button {
                             text: "Test Audio"
@@ -166,50 +156,16 @@ ApplicationWindow {
             }
 
             GroupBox {
-                title: "Codecs"
+                title: "Audio Codecs"
                 Layout.fillWidth: true
                 ColumnLayout {
                     width: parent.width
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 20
-                        ColumnLayout {
-                            Label { text: "Available" }
-                            Frame {
-                                Layout.preferredWidth: 200
-                                Layout.preferredHeight: 200
-                                padding: 0
-                                ListView {
-                                    anchors.fill: parent
-                                    model: hardwareService.audioCodecs
-                                    delegate: ItemDelegate {
-                                        width: parent.width
-                                        text: modelData
-                                    }
-                                    clip: true
-                                }
-                            }
-                        }
-                        ColumnLayout {
-                            Button { text: "->" }
-                            Button { text: "<-" }
-                        }
-                        ColumnLayout {
-                            Label { text: "Enabled" }
-                            Frame {
-                                Layout.preferredWidth: 200
-                                Layout.preferredHeight: 200
-                                padding: 0
-                                ListView {
-                                    anchors.fill: parent
-                                    model: ["Opus", "PCMU", "PCMA"]
-                                    delegate: ItemDelegate {
-                                        width: parent.width
-                                        text: modelData
-                                    }
-                                    clip: true
-                                }
-                            }
+                    Repeater {
+                        model: hardwareService.audioCodecs
+                        CheckBox {
+                            text: modelData
+                            checked: hardwareService.isCodecEnabled(modelData)
+                            onToggled: hardwareService.setCodecEnabled(modelData, checked)
                         }
                     }
                 }
@@ -234,12 +190,6 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             enabled: hardwareService.videoDevices.length > 0
                         }
-                        Label { text: "Video Codec" }
-                        ComboBox {
-                            id: videoCodecDevCombo
-                            model: hardwareService.videoCodecs
-                            Layout.fillWidth: true
-                        }
                     }
                     RowLayout {
                         Button {
@@ -250,32 +200,6 @@ ApplicationWindow {
                             text: "Stop Preview"
                             onClicked: hardwareService.stopVideoPreview()
                         }
-                    }
-                }
-            }
-
-            GroupBox {
-                title: "Network"
-                Layout.fillWidth: true
-                ColumnLayout {
-                    width: parent.width
-                    GridLayout {
-                        columns: 4
-                        Layout.fillWidth: true
-                        Label { text: "Source Port" }
-                        TextField { id: sourcePortField; text: "5060"; Layout.preferredWidth: 80 }
-                        CheckBox { text: "rport"; checked: true }
-                        Item { Layout.fillWidth: true }
-                        
-                        Label { text: "RTP Ports" }
-                        TextField { text: "4000"; Layout.preferredWidth: 80 }
-                        Label { text: "-" }
-                        TextField { text: "4010"; Layout.preferredWidth: 80 }
-                    }
-                    RowLayout {
-                        Layout.fillWidth: true
-                        Label { text: "STUN Server" }
-                        TextField { Layout.fillWidth: true; placeholderText: "stun.l.google.com:19302" }
                     }
                 }
             }

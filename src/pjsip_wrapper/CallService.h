@@ -5,6 +5,7 @@
 #include <QObject>
 #include <QSet>
 #include <QVariantMap>
+#include <map>
 #include <memory>
 #include <pjsua2.hpp>
 
@@ -23,10 +24,12 @@ public:
   static CallService &instance();
 
   Q_INVOKABLE void makeCall(const QString &accountId,
-                            const QString &destination);
+                            const QString &destination, bool video = false);
   Q_INVOKABLE void answerCall(int callId);
   Q_INVOKABLE void hangupCall(int callId);
   Q_INVOKABLE void toggleMute(int callId);
+  // Starts or stops recording the call to a WAV file; returns the new state
+  Q_INVOKABLE bool toggleRecording(int callId);
   Q_INVOKABLE void holdCall(int callId);
   Q_INVOKABLE void resumeCall(int callId);
   Q_INVOKABLE void transferCall(int callId, const QString &destination);
@@ -58,6 +61,11 @@ private:
   QMap<int, std::shared_ptr<MyCall>> m_activeCalls;
   QSet<int> m_conferenceParticipants;
   QSet<int> m_mutedCalls;
+  QSet<int> m_ringingCalls;
+  std::map<int, std::unique_ptr<pj::AudioMediaRecorder>> m_recorders;
+  std::unique_ptr<pj::ToneGenerator> m_ringTone;
+
+  void setRinging(int callId, bool ringing);
   int m_lastCallId = -1;
   QString m_lastRemoteUri;
 };

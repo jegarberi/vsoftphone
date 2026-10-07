@@ -198,37 +198,8 @@ ApplicationWindow {
                         anchors.margins: Theme.spacing4
                         spacing: Theme.spacing4
                         
-                        // Search Bar
-                        Rectangle {
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: 40
-                            radius: Theme.radiusMedium
-                            color: Theme.background
-                            border.width: 1
-                            border.color: Theme.border
-                            
-                            RowLayout {
-                                anchors.fill: parent
-                                anchors.margins: Theme.spacing3
-                                spacing: Theme.spacing2
-                                
-                                Text {
-                                    text: "🔍"
-                                    font.pixelSize: 16
-                                }
-                                
-                                TextField {
-                                    id: globalSearch
-                                    Layout.fillWidth: true
-                                    placeholderText: "Search contacts, history..."
-                                    background: Item {}
-                                    color: Theme.textPrimary
-                                    font.family: Theme.fontFamily
-                                    font.pixelSize: Theme.fontSizeBody
-                                }
-                            }
-                        }
-                        
+                        Item { Layout.fillWidth: true }
+
                         // Quick Actions
                         AppButton {
                             text: "📞"
@@ -244,9 +215,9 @@ ApplicationWindow {
                         
                         // User Avatar with Status
                         AppAvatar {
-                            name: "User"
+                            name: accountModel.defaultAccountId
                             showStatus: true
-                            status: "online"
+                            status: presenceService.status.toLowerCase()
                             size: 40
                         }
                     }

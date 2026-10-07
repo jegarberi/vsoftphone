@@ -3,7 +3,10 @@
 #include "SipService.h"
 #include "SipUri.h"
 #include "StorageService.h"
+#include <QDateTime>
 #include <QDebug>
+#include <QDir>
+#include <QStandardPaths>
 
 using namespace pj;
 
@@ -13,7 +16,7 @@ MyCall::~MyCall() {}
 
 // PJSIP invokes these on its worker thread. Capture what we need here and hop
 // to the GUI thread before touching CallService state or any model.
-void MyCall::onCallState(pj::OnCallStateParam &prm) {
+void MyCall::onCallState(pj::OnCallStateParam &) {
   CallInfo ci = getInfo();
   qDebug() << "*** Call State:" << ci.stateText.c_str();
 
@@ -25,9 +28,11 @@ void MyCall::onCallState(pj::OnCallStateParam &prm) {
   const int status = ci.lastStatusCode;
   const QString reason = QString::fromStdString(ci.lastReason);
   const QString remoteUri = QString::fromStdString(ci.remoteUri);
-  const QString direction =
-      (ci.role == PJSIP_ROLE_UAC) ? "Outgoing" : "Incoming";
-  const int duration = ci.totalDuration.sec;
+  const bool answered = ci.connectDuration.sec || ci.connectDuration.msec;
+  const QString direction = (ci.role == PJSIP_ROLE_UAC) ? "Outgoing"
+                            : answered                  ? "Incoming"
+                                                        : "Missed";
+  const int duration = ci.connectDuration.sec;
 
   QMetaObject::invokeMethod(
       &CallService::instance(),
@@ -42,7 +47,7 @@ void MyCall::onCallState(pj::OnCallStateParam &prm) {
       Qt::QueuedConnection);
 }
 
-void MyCall::onCallMediaState(pj::OnCallMediaStateParam &prm) {
+void MyCall::onCallMediaState(pj::OnCallMediaStateParam &) {
   const int id = getId();
   QMetaObject::invokeMethod(
       &CallService::instance(),
@@ -61,6 +66,7 @@ void CallService::handleMediaState(int callId) {
   try {
     CallInfo ci = call->getInfo();
     AudDevManager &adm = Endpoint::instance().audDevManager();
+    auto recorder = m_recorders.find(callId);
     for (unsigned i = 0; i < ci.media.size(); i++) {
       if (ci.media[i].type == PJMEDIA_TYPE_AUDIO && call->getMedia(i)) {
         AudioMedia *aud_med = (AudioMedia *)call->getMedia(i);
@@ -69,6 +75,10 @@ void CallService::handleMediaState(int callId) {
           adm.getCaptureDevMedia().stopTransmit(*aud_med);
         else
           adm.getCaptureDevMedia().startTransmit(*aud_med);
+        if (recorder != m_recorders.end()) {
+          aud_med->startTransmit(*recorder->second);
+          adm.getCaptureDevMedia().startTransmit(*recorder->second);
+        }
       } else if (ci.media[i].type == PJMEDIA_TYPE_VIDEO &&
                  ci.media[i].status == PJSUA_CALL_MEDIA_ACTIVE) {
         hasVideo = true;
@@ -92,13 +102,16 @@ CallService::CallService(QObject *parent) : QObject(parent) {
     m_lastCallId = id;
     m_lastRemoteUri = uri;
     CallModel::instance().addCall(id, uri);
+    setRinging(id, true);
   });
   connect(this, &CallService::outgoingCall, [this](int id, QString uri) {
     m_lastCallId = id;
     m_lastRemoteUri = uri;
   });
   connect(this, &CallService::callStateChanged,
-          [](int id, QString state, int status, QString reason) {
+          [this](int id, QString state, int status, QString reason) {
+            if (state != "INCOMING" && state != "EARLY")
+              setRinging(id, false);
             CallModel::instance().updateCallState(id, state, status, reason);
           });
   connect(this, &CallService::callMediaStateChanged, [](int id, bool hasVideo) {
@@ -109,7 +122,7 @@ CallService::CallService(QObject *parent) : QObject(parent) {
 CallService::~CallService() {}
 
 void CallService::makeCall(const QString &accountId,
-                           const QString &destination) {
+                           const QString &destination, bool video) {
   auto acc = SipService::instance().getAccount(accountId);
   if (!acc) {
     qWarning() << "Account not found:" << accountId;
@@ -119,7 +132,7 @@ void CallService::makeCall(const QString &accountId,
   auto call = std::make_shared<MyCall>(*acc);
   CallOpParam prm(true);
   prm.opt.audioCount = 1;
-  prm.opt.videoCount = 0; // Disable video by default to keep SDP small
+  prm.opt.videoCount = video ? 1 : 0;
 
   // Bare user gets the account's domain (accountId is "user@domain")
   QString rawDest = bareSipUri(destination);
@@ -143,7 +156,10 @@ void CallService::makeCall(const QString &accountId,
 
 void CallService::answerCall(int callId) {
   if (m_activeCalls.contains(callId)) {
-    CallOpParam prm;
+    // Answer with audio only; video is sent only on calls the user starts
+    CallOpParam prm(true);
+    prm.opt.audioCount = 1;
+    prm.opt.videoCount = 0;
     prm.statusCode = PJSIP_SC_OK;
     try {
       m_activeCalls[callId]->answer(prm);
@@ -175,6 +191,8 @@ void CallService::removeCall(int callId) {
   m_activeCalls.remove(callId);
   m_conferenceParticipants.remove(callId);
   m_mutedCalls.remove(callId);
+  m_recorders.erase(callId);
+  setRinging(callId, false);
   CallModel::instance().removeCall(callId);
 }
 
@@ -184,6 +202,67 @@ void CallService::toggleMute(int callId) {
   if (!m_mutedCalls.remove(callId))
     m_mutedCalls.insert(callId);
   handleMediaState(callId);
+}
+
+bool CallService::toggleRecording(int callId) {
+  if (!m_activeCalls.contains(callId))
+    return false;
+  if (m_recorders.erase(callId)) // destroying the recorder closes the file
+    return false;
+
+  try {
+    QDir dir(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) +
+             "/recordings");
+    dir.mkpath(".");
+    const QString file = dir.filePath(
+        QDateTime::currentDateTime().toString("yyyyMMdd-HHmmss") +
+        QString("-call%1.wav").arg(callId));
+    auto recorder = std::make_unique<AudioMediaRecorder>();
+    recorder->createRecorder(file.toStdString());
+    m_recorders[callId] = std::move(recorder);
+    handleMediaState(callId);
+    qInfo() << "Recording call" << callId << "to" << file;
+    return true;
+  } catch (Error &err) {
+    qWarning() << "Error starting recording:"
+               << QString::fromStdString(err.info());
+    return false;
+  }
+}
+
+// Plays a ring tone on the playback device while any incoming call is unanswered
+void CallService::setRinging(int callId, bool ringing) {
+  if (ringing)
+    m_ringingCalls.insert(callId);
+  else if (!m_ringingCalls.remove(callId))
+    return;
+
+  try {
+    if (m_ringingCalls.isEmpty()) {
+      if (m_ringTone)
+        m_ringTone->stop();
+      return;
+    }
+    if (!m_ringTone) {
+      m_ringTone = std::make_unique<ToneGenerator>();
+      m_ringTone->createToneGenerator();
+      m_ringTone->startTransmit(
+          Endpoint::instance().audDevManager().getPlaybackDevMedia());
+    }
+    if (!m_ringTone->isBusy()) {
+      ToneDesc tone;
+      tone.freq1 = 440;
+      tone.freq2 = 480;
+      tone.on_msec = 2000;
+      tone.off_msec = 4000;
+      ToneDescVector tones;
+      tones.push_back(tone);
+      m_ringTone->play(tones, true);
+    }
+  } catch (Error &err) {
+    qWarning() << "Error playing ring tone:"
+               << QString::fromStdString(err.info());
+  }
 }
 
 void CallService::holdCall(int callId) {

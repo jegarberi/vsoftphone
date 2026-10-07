@@ -60,16 +60,6 @@ Item {
                 }
             }
             
-            // Recent/Favorite Suggestions (placeholder)
-            Text {
-                visible: display.text.length === 0
-                text: "Recent contacts will appear here"
-                font.family: Theme.fontFamily
-                font.pixelSize: Theme.fontSizeCaption
-                color: Theme.textSecondary
-                Layout.alignment: Qt.AlignHCenter
-            }
-            
             Item { Layout.fillHeight: true }
             
             // Dialpad Grid
@@ -181,7 +171,7 @@ Item {
                         enabled: display.text !== ""
                         onClicked: {
                             if (display.text !== "") {
-                                callService.makeCall(accountModel.defaultAccountId, "sip:" + display.text)
+                                callService.makeCall(accountModel.defaultAccountId, "sip:" + display.text, true)
                             }
                         }
                     }
@@ -255,10 +245,11 @@ Item {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                            // TODO: Show account selector
-                        }
+                        onClicked: accountModel.selectNextAccount()
                     }
+
+                    ToolTip.visible: accountSelectorMouse.containsMouse
+                    ToolTip.text: accountModel.defaultAccountId || "No active account"
                 }
             }
             

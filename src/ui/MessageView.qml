@@ -18,6 +18,13 @@ Item {
         anchors.fill: parent
         anchors.margins: 10
 
+        TextField {
+            Layout.fillWidth: true
+            text: root.remoteParty
+            placeholderText: "Recipient (number or user@host)"
+            onEditingFinished: root.remoteParty = text
+        }
+
         ListView {
             id: listView
             Layout.fillWidth: true

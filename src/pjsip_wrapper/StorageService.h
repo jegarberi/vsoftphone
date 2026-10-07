@@ -47,6 +47,7 @@ struct ContactRecord {
   int id;
   QString name;
   QString number;
+  QString group;
 };
 
 struct MessageRecord {
@@ -77,7 +78,8 @@ public:
   QList<AccountRecord> getAccounts();
 
   // Contacts
-  void addContact(const QString &name, const QString &number);
+  void addContact(const QString &name, const QString &number,
+                  const QString &group);
   void removeContact(int id);
   QList<ContactRecord> getContacts();
 

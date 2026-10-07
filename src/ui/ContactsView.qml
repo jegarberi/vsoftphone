@@ -19,6 +19,14 @@ Item {
             clip: true
             model: contactsModel
 
+            section.property: "group"
+            section.delegate: Label {
+                text: section
+                visible: section !== ""
+                font.bold: true
+                padding: 6
+            }
+
             delegate: ItemDelegate {
                 width: ListView.view.width
                 text: model.name + " (" + model.number + ")"
@@ -80,12 +88,17 @@ Item {
                 id: numberField
                 placeholderText: "Number"
             }
+            TextField {
+                id: groupField
+                placeholderText: "Group (optional)"
+            }
         }
 
         onAccepted: {
-            contactsModel.addContact(nameField.text, numberField.text)
+            contactsModel.addContact(nameField.text, numberField.text, groupField.text)
             nameField.clear()
             numberField.clear()
+            groupField.clear()
         }
     }
 }

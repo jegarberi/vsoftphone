@@ -1,5 +1,7 @@
 #include "ContactsModel.h"
+#include "../pjsip_wrapper/BuddyService.h"
 #include "../pjsip_wrapper/StorageService.h"
+#include "AccountModel.h"
 
 ContactsModel &ContactsModel::instance() {
   static ContactsModel _instance;
@@ -7,11 +9,32 @@ ContactsModel &ContactsModel::instance() {
 }
 
 ContactsModel::ContactsModel(QObject *parent) : QAbstractListModel(parent) {
+  // Accounts own the presence subscriptions, so redo them when accounts change
+  connect(&AccountModel::instance(), &AccountModel::defaultAccountIdChanged,
+          this, &ContactsModel::subscribePresence);
+  reload();
+}
+
+void ContactsModel::reload() {
+  beginResetModel();
+  m_contacts.clear();
   QList<ContactRecord> records = StorageService::instance().getContacts();
   for (const auto &rec : records) {
     m_contacts.append(
-        {QString::number(rec.id), rec.name, rec.number, "Offline"});
+        {QString::number(rec.id), rec.name, rec.number, rec.group, "Offline"});
   }
+  endResetModel();
+  subscribePresence();
+}
+
+void ContactsModel::subscribePresence() {
+  BuddyService &buddies = BuddyService::instance();
+  buddies.clear();
+  const QString accountId = AccountModel::instance().defaultAccountId();
+  if (accountId.isEmpty())
+    return;
+  for (const auto &contact : m_contacts)
+    buddies.addBuddy(accountId, contact.number);
 }
 
 int ContactsModel::rowCount(const QModelIndex &parent) const {
@@ -33,6 +56,8 @@ QVariant ContactsModel::data(const QModelIndex &index, int role) const {
     return contact.name;
   case NumberRole:
     return contact.number;
+  case GroupRole:
+    return contact.group;
   case StatusRole:
     return contact.status;
   default:
@@ -45,24 +70,15 @@ QHash<int, QByteArray> ContactsModel::roleNames() const {
   roles[IdRole] = "id";
   roles[NameRole] = "name";
   roles[NumberRole] = "number";
+  roles[GroupRole] = "group";
   roles[StatusRole] = "status";
   return roles;
 }
 
-void ContactsModel::addContact(const QString &name, const QString &number) {
-  StorageService::instance().addContact(name, number);
-
-  // Refresh model is easier or we find the ID?
-  // For simplicity refresh from DB or just add with a temporary ID?
-  // Let's just reset model for a full refresh to get the real ID from DB
-  beginResetModel();
-  m_contacts.clear();
-  QList<ContactRecord> records = StorageService::instance().getContacts();
-  for (const auto &rec : records) {
-    m_contacts.append(
-        {QString::number(rec.id), rec.name, rec.number, "Offline"});
-  }
-  endResetModel();
+void ContactsModel::addContact(const QString &name, const QString &number,
+                               const QString &group) {
+  StorageService::instance().addContact(name, number, group);
+  reload(); // picks up the database id and the group ordering
 }
 
 void ContactsModel::removeContact(int index) {
@@ -71,6 +87,7 @@ void ContactsModel::removeContact(int index) {
 
   int id = m_contacts[index].id.toInt();
   StorageService::instance().removeContact(id);
+  BuddyService::instance().removeBuddy(m_contacts[index].number);
 
   beginRemoveRows(QModelIndex(), index, index);
   m_contacts.removeAt(index);

@@ -79,12 +79,30 @@ AccountModel::AccountModel(QObject *parent) : QAbstractListModel(parent) {
 }
 
 QString AccountModel::defaultAccountId() const {
+  QString first;
   for (const auto &acc : m_accounts) {
-    if (acc.active) {
-      return acc.username + "@" + acc.domain;
-    }
+    if (!acc.active)
+      continue;
+    const QString id = acc.username + "@" + acc.domain;
+    if (id == m_selectedId)
+      return id;
+    if (first.isEmpty())
+      first = id;
   }
-  return "";
+  return first;
+}
+
+void AccountModel::selectNextAccount() {
+  QStringList active;
+  for (const auto &acc : m_accounts) {
+    if (acc.active)
+      active.append(acc.username + "@" + acc.domain);
+  }
+  if (active.isEmpty())
+    return;
+  m_selectedId =
+      active[(active.indexOf(defaultAccountId()) + 1) % active.size()];
+  emit defaultAccountIdChanged();
 }
 
 int AccountModel::rowCount(const QModelIndex &parent) const {

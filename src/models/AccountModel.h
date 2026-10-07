@@ -84,12 +84,15 @@ public:
   Q_INVOKABLE QVariantMap getAccount(int index) const;
   Q_INVOKABLE void removeAccount(int index);
   Q_INVOKABLE void toggleActive(int index);
+  // Makes the next active account the one used for calls and messages
+  Q_INVOKABLE void selectNextAccount();
 
 signals:
   void defaultAccountIdChanged();
 
 private:
   QList<Account> m_accounts;
+  QString m_selectedId; // preferred account; falls back to the first active
   QHash<QString, QString> m_status; // "user@domain" -> registration status
 };
 
