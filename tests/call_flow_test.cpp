@@ -828,6 +828,24 @@ int main(int argc, char *argv[]) {
   callService.hangupCall(callId(0));
   CHECK(waitFor([] { return CallModel::instance().rowCount() == 0; }));
 
+  // --- a message to an IP address needs no account or server ----------------
+  {
+    const int before = StorageService::instance().conversations().size();
+    MessageModel direct;
+    direct.setCurrentRemoteParty(domain); // ourselves, by address
+    direct.sendMessage("no server involved");
+    CHECK(direct.rowCount() == 1);
+    CHECK(direct.data(direct.index(0), MessageModel::DirectionRole) ==
+          "Outgoing");
+    // It also arrives: sent to 127.0.0.1, received from our LAN address
+    CHECK(waitFor([&] {
+      return StorageService::instance().conversations().size() >= before + 1;
+    }));
+    pump(300);
+    CHECK(direct.data(direct.index(0), MessageModel::DirectionRole) ==
+          "Outgoing"); // delivered, so not flipped to Failed
+  }
+
   // --- direct IP calls can be turned off: 403, no ringing, no history --------
   {
     const int ringsBefore = incomingSignals;

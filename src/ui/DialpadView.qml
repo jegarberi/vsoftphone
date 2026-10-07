@@ -66,17 +66,24 @@ Item {
                     focusPolicy: Qt.NoFocus
                     onClicked: root.type(modelData.digit)
 
-                    contentItem: Column {
-                        Label {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            text: modelData.digit
-                            font.pixelSize: 22
-                        }
-                        Label {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            text: modelData.letters
-                            font.pixelSize: 9
-                            color: Theme.muted
+                    // The digit and its letters, centred on the button both ways
+                    contentItem: Item {
+                        Column {
+                            anchors.centerIn: parent
+                            Label {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                text: modelData.digit
+                                font.pixelSize: 22
+                            }
+                            Label {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                // No empty line under 1, * and #, which would
+                                // push the digit off centre
+                                visible: modelData.letters !== ""
+                                text: modelData.letters
+                                font.pixelSize: 9
+                                color: Theme.muted
+                            }
                         }
                     }
                 }

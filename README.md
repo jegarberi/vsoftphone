@@ -19,7 +19,10 @@ on Linux, with a cross-compiled Windows build.
   monitored users appear in Contacts as Idle, Ringing or Busy
 - NAT traversal per account: STUN, ICE, and TURN relay when direct media is
   not possible; optional SRTP
-- Instant messages with typing indication, stored in SQLite
+- Instant messages with typing indication, stored in SQLite; a message to
+  an IP address goes direct, with no account or server
+- Video calls with H.264, VP8 and VP9 (regular build). H.265 is not
+  available: PJSIP has no H.265 codec
 - Contacts with groups and presence, call history with missed calls
 - Audio device, volume, echo cancellation and codec selection, all persisted
 - Re-registers when the network comes back

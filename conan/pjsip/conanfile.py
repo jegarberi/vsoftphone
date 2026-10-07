@@ -42,6 +42,8 @@ class Pjsip(ConanFile):
             f.write("#define PJMEDIA_HAS_VIDEO 1\n")
             f.write("#define PJMEDIA_VIDEO_DEV_HAS_V4L2 1\n")
             f.write("#define PJMEDIA_VIDEO_DEV_HAS_SDL 1\n")
+            # VP9 is in PJSIP's libvpx codec but switched off by default
+            f.write("#define PJMEDIA_HAS_VPX_CODEC_VP9 1\n")
 
     def generate(self):
         from conan.tools.env import VirtualBuildEnv

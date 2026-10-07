@@ -859,10 +859,15 @@ static std::string toSipUri(const QString &destination,
 bool SipService::sendMessage(const QString &accountId,
                              const QString &destination,
                              const QString &content) {
-  auto acc = getAccount(accountId);
+  // Like a call, a message to an IP address goes direct, from the local
+  // account, and needs no SIP account or server
+  const bool direct = hasIpHost(bareSipUri(destination));
+  auto acc = direct ? m_localAccount : getAccount(accountId);
   pj_status_t status = PJ_EINVAL;
   if (acc) {
-    std::string destStr = toSipUri(destination, accountId);
+    std::string destStr = direct
+                              ? ("sip:" + bareSipUri(destination)).toStdString()
+                              : toSipUri(destination, accountId);
     std::string contentStr = content.toStdString();
     pj_str_t pj_dest = pj_str((char *)destStr.c_str());
     pj_str_t pj_content = pj_str((char *)contentStr.c_str());
