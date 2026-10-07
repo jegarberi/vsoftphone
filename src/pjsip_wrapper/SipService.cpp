@@ -2,6 +2,7 @@
 #include "BlfService.h"
 #include "BuddyService.h"
 #include "CallService.h"
+#include "Keyring.h"
 #include "HardwareService.h"
 #include "StorageService.h"
 #include "SipUri.h"
@@ -27,6 +28,51 @@ SipService::SipService(QObject *parent)
   QSettings settings;
   m_doNotDisturb = settings.value("calls/doNotDisturb", false).toBool();
   m_autoAnswer = settings.value("calls/autoAnswer", false).toBool();
+
+  // Keyring when there is one, settings file otherwise
+  bool found = false;
+  m_turnPassword = Keyring::lookup("settings/turnPassword", &found);
+  if (!found)
+    m_turnPassword = settings.value("network/turnPassword").toString();
+}
+
+QVariant SipService::net(const char *key, const QVariant &fallback) const {
+  return QSettings().value(QLatin1String("network/") + QLatin1String(key),
+                           fallback);
+}
+
+void SipService::setNet(const char *key, const QVariant &value) {
+  QSettings().setValue(QLatin1String("network/") + QLatin1String(key), value);
+  m_networkDirty = true;
+  emit networkSettingsChanged();
+}
+
+void SipService::setTurnPassword(const QString &password) {
+  if (m_turnPassword == password)
+    return;
+  m_turnPassword = password;
+  QSettings settings;
+  if (Keyring::store("settings/turnPassword", password))
+    settings.remove("network/turnPassword");
+  else
+    settings.setValue("network/turnPassword", password);
+  m_networkDirty = true;
+  emit networkSettingsChanged();
+}
+
+// A global PJSIP switch, so it takes effect at once for every account
+void SipService::setRport(bool enabled) {
+  QSettings().setValue("network/rport", enabled);
+  if (m_endpoint)
+    pjsip_cfg()->endpt.disable_rport = enabled ? PJ_FALSE : PJ_TRUE;
+  emit networkSettingsChanged();
+}
+
+void SipService::applyNetworkSettings() {
+  if (!m_networkDirty)
+    return;
+  m_networkDirty = false;
+  emit networkSettingsApplied();
 }
 
 void SipService::setDoNotDisturb(bool enabled) {
@@ -104,6 +150,7 @@ void SipService::init() {
 
     // Disable automatic switching from UDP to TCP
     pjsip_cfg()->endpt.disable_tcp_switch = PJ_TRUE;
+    pjsip_cfg()->endpt.disable_rport = rport() ? PJ_FALSE : PJ_TRUE;
 
     // Try to initialize with default audio, but catch errors
     bool audioInitFailed = false;
@@ -216,6 +263,9 @@ void SipService::init() {
       pjsua_transport_get_info(m_udpTransportId, &ti);
       AccountConfig local;
       local.sipConfig.ipv6Use = PJSUA_IPV6_ENABLED_PREFER_IPV4;
+      // Direct calls must not wait on, or fail with, a STUN server
+      local.natConfig.sipStunUse = PJSUA_STUN_USE_DISABLED;
+      local.natConfig.mediaStunUse = PJSUA_STUN_USE_DISABLED;
       local.idUri =
           "<sip:" +
           std::string(ti.local_name.host.ptr, ti.local_name.host.slen) + ":" +
@@ -346,89 +396,76 @@ void SipService::registerAccount(const QString &id, const QVariantMap &config) {
     cfg.sipConfig.authCreds.push_back(AuthCredInfo(
         "digest", "*", login.toStdString(), 0, password.toStdString()));
 
-    // NAT Traversal
-    bool autoNat = config["autoNat"].toBool();
-    bool allowIpRewrite = config["allowIpRewrite"].toBool();
+    // NAT traversal
+    const bool autoNat = config["autoNat"].toBool();
+    const bool allowIpRewrite = config["allowIpRewrite"].toBool();
+    // Use the address the server saw us at (learned from received/rport) in
+    // Contact and Via, and, for media, in SDP
+    cfg.natConfig.contactRewriteUse = (autoNat || allowIpRewrite) ? 1 : 0;
+    cfg.natConfig.viaRewriteUse = autoNat ? 1 : 0;
+    cfg.natConfig.sdpNatRewriteUse =
+        (autoNat || allowIpRewrite || mediaRport()) ? 1 : 0;
 
-    if (autoNat) {
-      cfg.natConfig.contactRewriteUse = PJ_TRUE;
-      cfg.natConfig.viaRewriteUse = PJ_TRUE;
-      cfg.natConfig.sdpNatRewriteUse = PJ_TRUE;
-    } else {
-      cfg.natConfig.contactRewriteUse = allowIpRewrite ? PJ_TRUE : PJ_FALSE;
-      cfg.natConfig.viaRewriteUse = PJ_FALSE;
-      // If IP rewrite is allowed, we should also rewrite SDP to use the public
-      // IP instead of local IP (fixes 127.0.0.1 in c= line)
-      cfg.natConfig.sdpNatRewriteUse = allowIpRewrite ? PJ_TRUE : PJ_FALSE;
+    // The account's own STUN and TURN servers win over the global ones
+    const QString stunDefault = stunEnabled() ? stunServer() : QString();
+    QString turn = config["turnServer"].toString().trimmed();
+    QString turnUserName = config["turnUser"].toString();
+    QString turnPass = config["turnPass"].toString();
+    if (turn.isEmpty() && turnEnabled()) {
+      turn = turnServer();
+      turnUserName = turnUser();
+      turnPass = turnPassword();
     }
+
     // Media falls back in ICE order: direct (host candidates), then the
     // STUN-mapped address, then the TURN relay. A relay is an ICE candidate,
     // so configuring TURN turns ICE on.
-    const QString turn = config["turnServer"].toString().trimmed();
     cfg.natConfig.iceEnabled =
         (config["ice"].toBool() || !turn.isEmpty()) ? PJ_TRUE : PJ_FALSE;
 
-    bool enableStun = config["enableStun"].toBool();
+    const bool enableStun =
+        config["enableStun"].toBool() &&
+        !(config["stunServer"].toString().trimmed().isEmpty() &&
+          stunDefault.isEmpty());
     cfg.natConfig.sipStunUse =
         enableStun ? PJSUA_STUN_USE_DEFAULT : PJSUA_STUN_USE_DISABLED;
     cfg.natConfig.mediaStunUse =
         enableStun ? PJSUA_STUN_USE_DEFAULT : PJSUA_STUN_USE_DISABLED;
 
-    // Rebuild global STUN servers from all active accounts
+    // PJSIP has one STUN server list: every server an active account uses
     QSet<QString> activeStunServers;
-    QList<AccountRecord> records = StorageService::instance().getAccounts();
+    const QList<AccountRecord> records = StorageService::instance().getAccounts();
     for (const auto &rec : records) {
-      if (rec.active && rec.enableStun) {
-        if (rec.stunServer.isEmpty()) {
-          activeStunServers.insert("stun.l.google.com:19302");
-        } else {
-          activeStunServers.insert(rec.stunServer);
-        }
-      }
+      if (!rec.active || !rec.enableStun)
+        continue;
+      const QString server =
+          rec.stunServer.isEmpty() ? stunDefault : rec.stunServer;
+      if (!server.isEmpty())
+        activeStunServers.insert(server);
     }
 
-    // Apply to PJSIP
     std::vector<std::string> stunStdStrs;
-    for (const QString &s : activeStunServers) {
-      stunStdStrs.push_back(s.toStdString());
-    }
+    for (const QString &server : activeStunServers)
+      stunStdStrs.push_back(server.toStdString());
 
-    // We must pass at least one server or empty list?
-    // If empty list, PJSIP will have no STUN servers.
-
-    pj_str_t *servers = nullptr;
+    // PJSIP asserts on an empty list, so a list is only ever replaced by a
+    // non-empty one; accounts without STUN have it disabled above anyway.
     if (!stunStdStrs.empty()) {
-      servers = new pj_str_t[stunStdStrs.size()];
-      for (size_t i = 0; i < stunStdStrs.size(); ++i) {
-        servers[i] = pj_str(const_cast<char *>(stunStdStrs[i].c_str()));
-      }
-
-      pj_status_t status =
-          pjsua_update_stun_servers(stunStdStrs.size(), servers, PJ_FALSE);
-      if (status != PJ_SUCCESS) {
-        qWarning() << "Failed to update global STUN servers:" << status;
-      } else {
-        qDebug() << "Updated global STUN servers, count:" << stunStdStrs.size();
-      }
-    } else {
-      // PJSIP crashes if we call update_stun_servers with 0 servers.
-      // We cannot clear the list dynamically with this API version.
-      // For now, allow it to remain as is (stale servers might persist if all
-      // accounts removed). Since we start with 0 servers in init(), this is
-      // only an issue if we add then remove all.
-      qDebug() << "No STUN servers to configure (skipping update to avoid "
-                  "assertion)";
+      std::vector<pj_str_t> servers;
+      for (const std::string &server : stunStdStrs)
+        servers.push_back(pj_str(const_cast<char *>(server.c_str())));
+      const pj_status_t status =
+          pjsua_update_stun_servers(servers.size(), servers.data(), PJ_FALSE);
+      if (status != PJ_SUCCESS)
+        qWarning() << "Failed to update STUN servers:" << status;
     }
-
-    if (servers)
-      delete[] servers;
 
     if (!turn.isEmpty()) {
       cfg.natConfig.turnEnabled = PJ_TRUE;
       cfg.natConfig.turnServer = turn.toStdString();
       cfg.natConfig.turnConnType = PJ_TURN_TP_UDP;
-      cfg.natConfig.turnUserName = config["turnUser"].toString().toStdString();
-      cfg.natConfig.turnPassword = config["turnPass"].toString().toStdString();
+      cfg.natConfig.turnUserName = turnUserName.toStdString();
+      cfg.natConfig.turnPassword = turnPass.toStdString();
       cfg.natConfig.turnPasswordType = 0;
     }
 

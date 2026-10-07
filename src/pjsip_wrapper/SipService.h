@@ -38,6 +38,27 @@ class SipService : public QObject {
   Q_PROPERTY(bool tlsVerify READ tlsVerify WRITE setTlsVerify NOTIFY
                  callHandlingChanged)
 
+  // Network settings shared by all accounts. STUN and TURN are the defaults
+  // for accounts that name no server of their own. Changes reach the accounts
+  // through applyNetworkSettings().
+  Q_PROPERTY(bool stunEnabled READ stunEnabled WRITE setStunEnabled NOTIFY
+                 networkSettingsChanged)
+  Q_PROPERTY(QString stunServer READ stunServer WRITE setStunServer NOTIFY
+                 networkSettingsChanged)
+  Q_PROPERTY(bool turnEnabled READ turnEnabled WRITE setTurnEnabled NOTIFY
+                 networkSettingsChanged)
+  Q_PROPERTY(QString turnServer READ turnServer WRITE setTurnServer NOTIFY
+                 networkSettingsChanged)
+  Q_PROPERTY(QString turnUser READ turnUser WRITE setTurnUser NOTIFY
+                 networkSettingsChanged)
+  Q_PROPERTY(QString turnPassword READ turnPassword WRITE setTurnPassword
+                 NOTIFY networkSettingsChanged)
+  // Ask servers to reply to the port a request came from (Via ;rport)
+  Q_PROPERTY(bool rport READ rport WRITE setRport NOTIFY networkSettingsChanged)
+  // Advertise in SDP the address the server saw us at, learned through rport
+  Q_PROPERTY(bool mediaRport READ mediaRport WRITE setMediaRport NOTIFY
+                 networkSettingsChanged)
+
 public:
   static SipService &instance();
 
@@ -67,6 +88,27 @@ public:
   bool tlsVerify() const;
   void setTlsVerify(bool enabled);
 
+  bool stunEnabled() const { return net("stunEnabled", true).toBool(); }
+  void setStunEnabled(bool v) { setNet("stunEnabled", v); }
+  QString stunServer() const {
+    return net("stunServer", "stun.l.google.com:19302").toString();
+  }
+  void setStunServer(const QString &v) { setNet("stunServer", v.trimmed()); }
+  bool turnEnabled() const { return net("turnEnabled", false).toBool(); }
+  void setTurnEnabled(bool v) { setNet("turnEnabled", v); }
+  QString turnServer() const { return net("turnServer", "").toString(); }
+  void setTurnServer(const QString &v) { setNet("turnServer", v.trimmed()); }
+  QString turnUser() const { return net("turnUser", "").toString(); }
+  void setTurnUser(const QString &v) { setNet("turnUser", v); }
+  QString turnPassword() const { return m_turnPassword; }
+  void setTurnPassword(const QString &password);
+  bool rport() const { return net("rport", true).toBool(); }
+  void setRport(bool enabled);
+  bool mediaRport() const { return net("mediaRport", false).toBool(); }
+  void setMediaRport(bool v) { setNet("mediaRport", v); }
+  // Re-registers the active accounts if a network setting changed
+  Q_INVOKABLE void applyNetworkSettings();
+
   QList<std::shared_ptr<MyAccount>> getAccounts() const {
     return m_accounts.values();
   }
@@ -83,6 +125,8 @@ signals:
   void typingIndicationReceived(QString fromUri, bool isTyping);
   void messageReceived(QString from, QString text);
   void callHandlingChanged();
+  void networkSettingsChanged();
+  void networkSettingsApplied();
 
 private:
   explicit SipService(QObject *parent = nullptr);
@@ -90,6 +134,11 @@ private:
 
   SipService(const SipService &) = delete;
   SipService &operator=(const SipService &) = delete;
+
+  QVariant net(const char *key, const QVariant &fallback) const;
+  void setNet(const char *key, const QVariant &value);
+  QString m_turnPassword;
+  bool m_networkDirty = false;
 
   pj::Endpoint *m_endpoint;
   // Read from the PJSIP thread in onIncomingCall

@@ -115,9 +115,9 @@ Item {
                 TextField { id: blfField; placeholderText: "BLF list URI (BroadWorks busy lamp field)"; Layout.fillWidth: true }
                 CheckBox { id: presenceCheck; text: "Publish Presence" }
                 CheckBox { id: enableStunCheck; text: "Enable STUN" }
-                TextField { id: stunField; placeholderText: "STUN Server (host:port)"; Layout.fillWidth: true; visible: enableStunCheck.checked }
+                TextField { id: stunField; placeholderText: "STUN Server (host:port, empty = the one in Settings)"; Layout.fillWidth: true; visible: enableStunCheck.checked }
                 CheckBox { id: iceCheck; text: "ICE: try direct media first, then STUN, then TURN" }
-                TextField { id: turnField; placeholderText: "TURN Server (host:port) - relays media when nothing else works"; Layout.fillWidth: true }
+                TextField { id: turnField; placeholderText: "TURN Server (host:port, empty = the one in Settings)"; Layout.fillWidth: true }
                 TextField { id: turnUserField; placeholderText: "TURN Username"; Layout.fillWidth: true; visible: turnField.text !== "" }
                 TextField { id: turnPassField; placeholderText: "TURN Password"; echoMode: TextInput.Password; Layout.fillWidth: true; visible: turnField.text !== "" }
 
@@ -130,7 +130,6 @@ Item {
                 }
 
                 CheckBox { id: rewriteCheck; text: "Allow IP Rewrite" }
-                CheckBox { id: rportCheck; text: "Enable Rport" }
                 CheckBox { id: autoNatCheck; text: "Automatic NAT Handling" }
             }
         }
@@ -169,7 +168,6 @@ Item {
                 iceCheck.checked = data["ice"]
 
                 rewriteCheck.checked = data["allowIpRewrite"]
-                rportCheck.checked = data["rport"]
                 autoNatCheck.checked = data["autoNat"]
                 
                 title = "Edit Account"
@@ -192,7 +190,6 @@ Item {
                 iceCheck.checked = false
 
                 rewriteCheck.checked = false
-                rportCheck.checked = false
                 autoNatCheck.checked = false
             }
         }
@@ -221,7 +218,6 @@ Item {
                 "srtpMode": srtpCombo.currentIndex,
 
                 "allowIpRewrite": rewriteCheck.checked,
-                "rport": rportCheck.checked,
                 "autoNat": autoNatCheck.checked
             }
             

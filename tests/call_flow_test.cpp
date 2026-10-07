@@ -335,6 +335,43 @@ int main(int argc, char *argv[]) {
   CHECK(StorageService::instance().conversations() ==
         QStringList({"nobody@invalid.invalid", "tester"}));
 
+  // --- global network settings reach PJSIP ----------------------------------
+  auto accountConfig = [&](const std::function<void(const pjsua_acc_config &)>
+                               &check) {
+    pj_pool_t *pool = pjsua_pool_create("cfg", 1000, 1000);
+    pjsua_acc_config cfg;
+    CHECK(pjsua_acc_get_config(sip.getAccount(accountId)->getId(), pool,
+                               &cfg) == PJ_SUCCESS);
+    check(cfg);
+    pj_pool_release(pool);
+  };
+  sip.setRport(false);
+  CHECK(pjsip_cfg()->endpt.disable_rport == PJ_TRUE);
+  sip.setRport(true);
+  CHECK(pjsip_cfg()->endpt.disable_rport == PJ_FALSE);
+
+  accountConfig([](const pjsua_acc_config &cfg) {
+    CHECK(!cfg.allow_sdp_nat_rewrite);
+    CHECK(cfg.sip_stun_use == PJSUA_STUN_USE_DISABLED); // account has it off
+  });
+  sip.setMediaRport(true);
+  sip.setStunServer("127.0.0.1:9"); // the global default, nothing listens
+  account["enableStun"] = true;     // account asks for STUN, names no server
+  accounts.updateAccount(0, account);
+  sip.applyNetworkSettings();
+  accountConfig([](const pjsua_acc_config &cfg) {
+    CHECK(cfg.allow_sdp_nat_rewrite);
+    CHECK(cfg.sip_stun_use == PJSUA_STUN_USE_DEFAULT);
+  });
+  sip.setStunEnabled(false); // no global server and none of its own: off again
+  sip.setMediaRport(false);
+  sip.applyNetworkSettings();
+  accountConfig([](const pjsua_acc_config &cfg) {
+    CHECK(!cfg.allow_sdp_nat_rewrite);
+    CHECK(cfg.sip_stun_use == PJSUA_STUN_USE_DISABLED);
+  });
+  account["enableStun"] = false;
+
   // --- ICE: media negotiates candidates and comes up ------------------------
   sip.setAutoAnswer(true);
   account["ice"] = true;
@@ -350,11 +387,15 @@ int main(int argc, char *argv[]) {
   // pjturn-srv:  MICROSIP_TEST_TURN=127.0.0.1:3478 (user/password 100/100)
   const QString turnServer = qEnvironmentVariable("MICROSIP_TEST_TURN");
   if (!turnServer.isEmpty()) {
-    account["ice"] = false; // TURN alone must be enough to enable ICE
-    account["turnServer"] = turnServer;
-    account["turnUser"] = qEnvironmentVariable("MICROSIP_TEST_TURN_USER", "100");
-    account["turnPass"] = qEnvironmentVariable("MICROSIP_TEST_TURN_PASS", "100");
+    // The account names no TURN server, so it takes the global one, and
+    // TURN alone must be enough to enable ICE
+    account["ice"] = false;
     accounts.updateAccount(0, account);
+    sip.setTurnServer(turnServer);
+    sip.setTurnUser(qEnvironmentVariable("MICROSIP_TEST_TURN_USER", "100"));
+    sip.setTurnPassword(qEnvironmentVariable("MICROSIP_TEST_TURN_PASS", "100"));
+    sip.setTurnEnabled(true);
+    sip.applyNetworkSettings();
 
     // Offer no host candidates, leaving the relay as the only path
     const pjsua_acc_id acc = sip.getAccount(accountId)->getId();
@@ -380,6 +421,8 @@ int main(int argc, char *argv[]) {
     }));
     callService.hangupCall(relayed);
     CHECK(waitFor([] { return CallModel::instance().rowCount() == 0; }));
+    sip.setTurnEnabled(false);
+    sip.applyNetworkSettings();
     std::puts("call_flow_test: TURN relay verified");
   }
 

@@ -9,6 +9,7 @@ ApplicationWindow {
     onClosing: {
         Theme.loadSettings()
         hardwareService.restoreSettings()
+        sipService.applyNetworkSettings()
     }
     width: 600
     height: 700
@@ -182,6 +183,79 @@ ApplicationWindow {
                             checked: hardwareService.isCodecEnabled(modelData)
                             onToggled: hardwareService.setCodecEnabled(modelData, checked)
                         }
+                    }
+                }
+            }
+
+            GroupBox {
+                title: "Network"
+                Layout.fillWidth: true
+                ColumnLayout {
+                    width: parent.width
+                    Label {
+                        text: "STUN and TURN here are used by accounts that name no server of their own. Changes apply when this window closes."
+                        wrapMode: Text.Wrap
+                        Layout.fillWidth: true
+                        color: Theme.textSecondary
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        CheckBox {
+                            id: stunCheck
+                            text: "STUN"
+                            checked: sipService.stunEnabled
+                            onToggled: sipService.stunEnabled = checked
+                        }
+                        TextField {
+                            Layout.fillWidth: true
+                            enabled: stunCheck.checked
+                            placeholderText: "host:port"
+                            text: sipService.stunServer
+                            onTextEdited: sipService.stunServer = text
+                        }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        CheckBox {
+                            id: turnCheck
+                            text: "TURN"
+                            checked: sipService.turnEnabled
+                            onToggled: sipService.turnEnabled = checked
+                        }
+                        TextField {
+                            Layout.fillWidth: true
+                            enabled: turnCheck.checked
+                            placeholderText: "host:port"
+                            text: sipService.turnServer
+                            onTextEdited: sipService.turnServer = text
+                        }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        enabled: turnCheck.checked
+                        TextField {
+                            Layout.fillWidth: true
+                            placeholderText: "TURN username"
+                            text: sipService.turnUser
+                            onTextEdited: sipService.turnUser = text
+                        }
+                        TextField {
+                            Layout.fillWidth: true
+                            placeholderText: "TURN password"
+                            echoMode: TextInput.Password
+                            text: sipService.turnPassword
+                            onTextEdited: sipService.turnPassword = text
+                        }
+                    }
+                    CheckBox {
+                        text: "rport: ask servers to reply to the port our requests come from"
+                        checked: sipService.rport
+                        onToggled: sipService.rport = checked
+                    }
+                    CheckBox {
+                        text: "rport for media: advertise in SDP the address the server saw us at"
+                        checked: sipService.mediaRport
+                        onToggled: sipService.mediaRport = checked
                     }
                 }
             }

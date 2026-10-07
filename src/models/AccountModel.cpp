@@ -78,6 +78,16 @@ AccountModel::AccountModel(QObject *parent) : QAbstractListModel(parent) {
             }
           });
 
+  // Global STUN, TURN and rewrite settings are baked into each account
+  connect(&SipService::instance(), &SipService::networkSettingsApplied, this,
+          [this] {
+            for (const auto &rec : m_accounts) {
+              if (rec.active)
+                SipService::instance().registerAccount(keyOf(rec), toMap(rec));
+            }
+            emit defaultAccountIdChanged();
+          });
+
   m_accounts = StorageService::instance().getAccounts();
   for (const auto &rec : m_accounts) {
     if (rec.active)
