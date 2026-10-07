@@ -33,6 +33,7 @@ void MyCall::onCallState(pj::OnCallStateParam &) {
                             : answered                  ? "Incoming"
                                                         : "Missed";
   const int duration = ci.connectDuration.sec;
+  const bool quiet = silent;
 
   QMetaObject::invokeMethod(
       &CallService::instance(),
@@ -40,7 +41,8 @@ void MyCall::onCallState(pj::OnCallStateParam &) {
         CallService &svc = CallService::instance();
         emit svc.callStateChanged(id, state, status, reason);
         if (disconnected) {
-          StorageService::instance().addCall(remoteUri, direction, duration);
+          if (!quiet)
+            StorageService::instance().addCall(remoteUri, direction, duration);
           svc.removeCall(id);
         }
       },
@@ -77,8 +79,16 @@ void CallService::handleMediaState(int callId) {
           adm.getCaptureDevMedia().startTransmit(*aud_med);
         if (recorder != m_recorders.end()) {
           aud_med->startTransmit(*recorder->second);
-          adm.getCaptureDevMedia().startTransmit(*recorder->second);
+          // A muted microphone is not recorded either
+          if (m_mutedCalls.contains(callId))
+            adm.getCaptureDevMedia().stopTransmit(*recorder->second);
+          else
+            adm.getCaptureDevMedia().startTransmit(*recorder->second);
         }
+        // The far end is sending audio (early media): stop our ringback tone
+        if (m_outgoingCalls.contains(callId) &&
+            ci.media[i].status == PJSUA_CALL_MEDIA_ACTIVE)
+          setRinging(callId, false);
       } else if (ci.media[i].type == PJMEDIA_TYPE_VIDEO &&
                  ci.media[i].status == PJSUA_CALL_MEDIA_ACTIVE) {
         hasVideo = true;
@@ -110,7 +120,11 @@ CallService::CallService(QObject *parent) : QObject(parent) {
   });
   connect(this, &CallService::callStateChanged,
           [this](int id, QString state, int status, QString reason) {
-            if (state != "INCOMING" && state != "EARLY")
+            // An incoming call rings until answered; an outgoing one plays
+            // the same tone as ringback once the far end is ringing
+            if (state == "EARLY" && m_outgoingCalls.contains(id))
+              setRinging(id, true);
+            else if (state != "INCOMING" && state != "EARLY")
               setRinging(id, false);
             CallModel::instance().updateCallState(id, state, status, reason);
           });
@@ -147,10 +161,11 @@ void CallService::makeCall(const QString &accountId,
 
   qInfo() << "Making call to:" << dest;
 
-  holdOthers(-1);
   try {
     call->makeCall(dest.toStdString(), prm);
     addCall(call);
+    m_outgoingCalls.insert(call->getId());
+    holdOthers(call->getId()); // only once the new call really started
     m_lastCallId = call->getId();
     m_lastRemoteUri = destination;
     CallModel::instance().addCall(m_lastCallId, destination);
@@ -200,6 +215,7 @@ void CallService::removeCall(int callId) {
   m_conferenceParticipants.remove(callId);
   m_mutedCalls.remove(callId);
   m_heldCalls.remove(callId);
+  m_outgoingCalls.remove(callId);
   m_recorders.erase(callId);
   setRinging(callId, false);
   CallModel::instance().removeCall(callId);
@@ -227,6 +243,23 @@ void CallService::holdOthers(int exceptCallId) {
     } catch (Error &) {
     }
   }
+}
+
+bool CallService::hasConnectedCall(int exceptCallId) const {
+  for (auto it = m_activeCalls.cbegin(); it != m_activeCalls.cend(); ++it) {
+    if (it.key() == exceptCallId)
+      continue;
+    try {
+      if (it.value()->getInfo().state == PJSIP_INV_STATE_CONFIRMED)
+        return true;
+    } catch (Error &) {
+    }
+  }
+  return false;
+}
+
+QUrl CallService::recordingsUrl() const {
+  return QUrl::fromLocalFile(recordingsDir());
 }
 
 QString CallService::recordingsDir() const {

@@ -58,6 +58,8 @@ class SipService : public QObject {
   // Advertise in SDP the address the server saw us at, learned through rport
   Q_PROPERTY(bool mediaRport READ mediaRport WRITE setMediaRport NOTIFY
                  networkSettingsChanged)
+  Q_PROPERTY(bool acceptIpCalls READ acceptIpCalls WRITE setAcceptIpCalls
+                 NOTIFY networkSettingsChanged)
 
 public:
   static SipService &instance();
@@ -89,25 +91,35 @@ public:
   void setTlsVerify(bool enabled);
 
   bool stunEnabled() const { return net("stunEnabled", true).toBool(); }
-  void setStunEnabled(bool v) { setNet("stunEnabled", v); }
+  void setStunEnabled(bool v) { setNet("stunEnabled", v, true); }
   QString stunServer() const {
     return net("stunServer", "stun.l.google.com:19302").toString();
   }
-  void setStunServer(const QString &v) { setNet("stunServer", v.trimmed()); }
+  void setStunServer(const QString &v) {
+    setNet("stunServer", v.trimmed(), "stun.l.google.com:19302");
+  }
   bool turnEnabled() const { return net("turnEnabled", false).toBool(); }
-  void setTurnEnabled(bool v) { setNet("turnEnabled", v); }
+  void setTurnEnabled(bool v) { setNet("turnEnabled", v, false); }
   QString turnServer() const { return net("turnServer", "").toString(); }
-  void setTurnServer(const QString &v) { setNet("turnServer", v.trimmed()); }
+  void setTurnServer(const QString &v) {
+    setNet("turnServer", v.trimmed(), "");
+  }
   QString turnUser() const { return net("turnUser", "").toString(); }
-  void setTurnUser(const QString &v) { setNet("turnUser", v); }
+  void setTurnUser(const QString &v) { setNet("turnUser", v, ""); }
   QString turnPassword() const { return m_turnPassword; }
   void setTurnPassword(const QString &password);
   bool rport() const { return net("rport", true).toBool(); }
   void setRport(bool enabled);
   bool mediaRport() const { return net("mediaRport", false).toBool(); }
-  void setMediaRport(bool v) { setNet("mediaRport", v); }
+  void setMediaRport(bool v) { setNet("mediaRport", v, false); }
   // Re-registers the active accounts if a network setting changed
   Q_INVOKABLE void applyNetworkSettings();
+
+  // Whether calls addressed to our IP address rather than an account ring
+  bool acceptIpCalls() const { return m_acceptIpCalls; }
+  void setAcceptIpCalls(bool enabled);
+  // True while a call is using the account, which must then not be deleted
+  bool hasActiveCalls(const QString &id) const;
 
   QList<std::shared_ptr<MyAccount>> getAccounts() const {
     return m_accounts.values();
@@ -136,7 +148,8 @@ private:
   SipService &operator=(const SipService &) = delete;
 
   QVariant net(const char *key, const QVariant &fallback) const;
-  void setNet(const char *key, const QVariant &value);
+  void setNet(const char *key, const QVariant &value,
+              const QVariant &fallback);
   QString m_turnPassword;
   bool m_networkDirty = false;
 
@@ -144,6 +157,7 @@ private:
   // Read from the PJSIP thread in onIncomingCall
   std::atomic<bool> m_doNotDisturb{false};
   std::atomic<bool> m_autoAnswer{false};
+  std::atomic<bool> m_acceptIpCalls{true};
   pj::TransportId m_udpTransportId = PJSUA_INVALID_ID;
   pj::TransportId m_tcpTransportId = PJSUA_INVALID_ID;
   pj::TransportId m_tlsTransportId = PJSUA_INVALID_ID;

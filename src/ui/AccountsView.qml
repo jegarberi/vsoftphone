@@ -38,7 +38,11 @@ Item {
                     }
                     Button {
                         text: "Remove"
-                        onClicked: accountModel.removeAccount(index)
+                        onClicked: {
+                            removeDialog.row = index
+                            removeDialog.accountLabel = model.username + "@" + model.domain
+                            removeDialog.open()
+                        }
                     }
                 }
             }
@@ -234,6 +238,35 @@ Item {
                 // A second Apply must update this account, not add another
                 editIndex = accountModel.rowCount() - 1
             }
+        }
+    }
+
+    Dialog {
+        id: removeDialog
+        property int row: -1
+        property string accountLabel: ""
+        title: "Remove account"
+        standardButtons: Dialog.Yes | Dialog.No
+        modal: true
+        anchors.centerIn: parent
+        Label { text: "Remove " + removeDialog.accountLabel + "?" }
+        onAccepted: accountModel.removeAccount(row)
+    }
+
+    // An account in a call cannot be removed, switched off or renamed
+    Dialog {
+        id: busyDialog
+        title: "Account in use"
+        standardButtons: Dialog.Ok
+        modal: true
+        anchors.centerIn: parent
+        Label { id: busyLabel }
+    }
+    Connections {
+        target: accountModel
+        function onAccountBusy(message) {
+            busyLabel.text = message
+            busyDialog.open()
         }
     }
 

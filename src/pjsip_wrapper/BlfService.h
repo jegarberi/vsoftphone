@@ -32,8 +32,14 @@ public:
   static QList<BlfLamp> parseNotify(const QByteArray &boundary,
                                     const QByteArray &body);
 
+  // Which account a subscription belongs to; callable from the PJSIP thread
+  QString accountOf(pjsip_evsub *sub);
+
 signals:
-  void lampChanged(QString uri, QString name, QString state);
+  void lampChanged(QString accountId, QString uri, QString name,
+                   QString state);
+  // The account's subscription is gone: its lamps are no longer known
+  void lampsCleared(QString accountId);
 
 private:
   explicit BlfService(QObject *parent = nullptr);

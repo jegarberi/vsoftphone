@@ -17,6 +17,8 @@ ContactsModel::ContactsModel(QObject *parent) : QAbstractListModel(parent) {
           this, &ContactsModel::subscribePresence);
   connect(&BlfService::instance(), &BlfService::lampChanged, this,
           &ContactsModel::updateLamp);
+  connect(&BlfService::instance(), &BlfService::lampsCleared, this,
+          &ContactsModel::clearLamps);
   reload();
 }
 
@@ -28,42 +30,77 @@ void ContactsModel::reload() {
     m_contacts.append(
         {QString::number(rec.id), rec.name, rec.number, rec.group, "Offline"});
   }
-  for (auto it = m_lamps.cbegin(); it != m_lamps.cend(); ++it)
-    applyLamp(it.key());
+  for (auto it = m_lamps.cbegin(); it != m_lamps.cend(); ++it) {
+    const int row = rowOfLamp(it.key());
+    if (row >= 0)
+      m_contacts[row].status = it->state;
+    else
+      m_contacts.append(lampRow(it.key()));
+  }
   endResetModel();
   subscribePresence();
 }
 
-// Puts a known lamp state on its contact, adding a "BLF" row if there is none.
-// Returns the row; the caller announces the change.
-int ContactsModel::applyLamp(const QString &uri) {
-  const Lamp &lamp = m_lamps[uri];
+// The contact a lamp belongs to: stored as the full URI or as its user part
+int ContactsModel::rowOfLamp(const QString &uri) const {
   const QString user = uri.section('@', 0, 0);
   for (int i = 0; i < m_contacts.count(); ++i) {
     const QString number = bareSipUri(m_contacts[i].number);
-    if (number == uri || number == user) {
-      m_contacts[i].status = lamp.state;
+    if (number == uri || number == user)
       return i;
-    }
   }
-  m_contacts.append(
-      {QString(), lamp.name.isEmpty() ? user : lamp.name, uri, "BLF", lamp.state});
-  return m_contacts.count() - 1;
+  return -1;
 }
 
-void ContactsModel::updateLamp(const QString &uri, const QString &name,
-                               const QString &state) {
-  m_lamps[uri] = {name, state};
-  // Simplest correct way to cover both an updated row and an appended one
-  beginResetModel();
-  applyLamp(uri);
-  endResetModel();
+// A monitored user nobody saved as a contact gets a row of its own
+Contact ContactsModel::lampRow(const QString &uri) const {
+  const Lamp &lamp = m_lamps[uri];
+  return {QString(), lamp.name.isEmpty() ? uri.section('@', 0, 0) : lamp.name,
+          uri, "BLF", lamp.state};
+}
+
+void ContactsModel::updateLamp(const QString &accountId, const QString &uri,
+                               const QString &name, const QString &state) {
+  m_lamps[uri] = {accountId, name, state};
+  const int row = rowOfLamp(uri);
+  if (row >= 0) {
+    m_contacts[row].status = state;
+    if (m_contacts[row].id.isEmpty())
+      m_contacts[row].name = lampRow(uri).name;
+    emit dataChanged(index(row), index(row), {StatusRole, NameRole});
+  } else {
+    beginInsertRows(QModelIndex(), m_contacts.count(), m_contacts.count());
+    m_contacts.append(lampRow(uri));
+    endInsertRows();
+  }
+}
+
+void ContactsModel::clearLamps(const QString &accountId) {
+  bool removed = false;
+  for (auto it = m_lamps.begin(); it != m_lamps.end();) {
+    if (it->accountId == accountId) {
+      it = m_lamps.erase(it);
+      removed = true;
+    } else {
+      ++it;
+    }
+  }
+  if (removed)
+    reload();
 }
 
 void ContactsModel::subscribePresence() {
   BuddyService &buddies = BuddyService::instance();
-  buddies.clear();
   const QString accountId = AccountModel::instance().defaultAccountId();
+  int stored = 0;
+  for (const auto &contact : m_contacts)
+    stored += !contact.id.isEmpty();
+  // Already subscribed through this account and nothing was dropped
+  if (accountId == m_presenceAccount && buddies.count() == stored)
+    return;
+
+  buddies.clear();
+  m_presenceAccount = accountId;
   if (accountId.isEmpty())
     return;
   for (const auto &contact : m_contacts) {

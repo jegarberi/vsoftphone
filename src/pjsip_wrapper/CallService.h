@@ -4,6 +4,7 @@
 #include <QMap>
 #include <QObject>
 #include <QSet>
+#include <QUrl>
 #include <QVariantMap>
 #include <map>
 #include <memory>
@@ -16,6 +17,8 @@ public:
 
   virtual void onCallState(pj::OnCallStateParam &prm) override;
   virtual void onCallMediaState(pj::OnCallMediaStateParam &prm) override;
+
+  bool silent = false; // not written to the call history
 };
 
 class CallService : public QObject {
@@ -36,6 +39,9 @@ public:
   // Starts or stops recording the call to a WAV file; returns the new state
   Q_INVOKABLE bool toggleRecording(int callId);
   Q_INVOKABLE QString recordingsDir() const;
+  Q_INVOKABLE QUrl recordingsUrl() const;
+  // True when a call other than `exceptCallId` is already connected
+  bool hasConnectedCall(int exceptCallId) const;
   Q_INVOKABLE void holdCall(int callId);
   Q_INVOKABLE void resumeCall(int callId);
   Q_INVOKABLE void transferCall(int callId, const QString &destination);
@@ -71,6 +77,7 @@ private:
   QSet<int> m_mutedCalls;
   QSet<int> m_ringingCalls;
   QSet<int> m_heldCalls;
+  QSet<int> m_outgoingCalls;
   std::map<int, std::unique_ptr<pj::AudioMediaRecorder>> m_recorders;
   std::unique_ptr<pj::ToneGenerator> m_ringTone;
 

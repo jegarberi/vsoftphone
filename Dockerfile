@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     qml6-module-qtquick-dialogs qml6-module-qtqml-workerscript \
     qml6-module-qt5compat-graphicaleffects \
     libssl-dev libopus-dev libvpx-dev libv4l-dev libasound2-dev libsdl2-dev \
-    uuid-dev libsecret-1-dev \
+    uuid-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

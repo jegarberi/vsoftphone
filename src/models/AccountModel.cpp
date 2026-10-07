@@ -69,12 +69,18 @@ AccountModel::AccountModel(QObject *parent) : QAbstractListModel(parent) {
   // Emitted from the PJSIP thread; `this` as context queues it to ours
   connect(&SipService::instance(), &SipService::accountStateChanged, this,
           [this](QString id, bool active, int code, QString text) {
-            m_status[id] = active ? "Registered"
-                           : code ? QString("%1 %2").arg(code).arg(text)
-                                  : text;
+            QString status = active ? "Registered"
+                             : code ? QString("%1 %2").arg(code).arg(text)
+                                    : text;
             for (int i = 0; i < m_accounts.count(); ++i) {
-              if (keyOf(m_accounts[i]) == id)
-                emit dataChanged(index(i), index(i), {StatusRole});
+              if (keyOf(m_accounts[i]) != id)
+                continue;
+              // The usual reason for a rejected login with nothing to send
+              if (!active && (code == 401 || code == 403 || code == 407) &&
+                  m_accounts[i].password.isEmpty())
+                status += " (no password stored: is the keyring unlocked?)";
+              m_status[id] = status;
+              emit dataChanged(index(i), index(i), {StatusRole});
             }
           });
 
@@ -221,6 +227,14 @@ QHash<int, QByteArray> AccountModel::roleNames() const {
           {StatusRole, "status"}};
 }
 
+// PJSIP frees an account's data when it is deleted, even under a live call
+bool AccountModel::refuseIfBusy(const AccountRecord &rec) {
+  if (!rec.active || !SipService::instance().hasActiveCalls(keyOf(rec)))
+    return false;
+  emit accountBusy(QString("%1 is in a call. Hang up first.").arg(keyOf(rec)));
+  return true;
+}
+
 void AccountModel::addAccount(const QVariantMap &data) {
   AccountRecord rec{};
   fromMap(data, rec);
@@ -242,7 +256,12 @@ void AccountModel::updateAccount(int index, const QVariantMap &data) {
 
   AccountRecord &rec = m_accounts[index];
   const QString oldId = keyOf(rec);
-  fromMap(data, rec);
+  AccountRecord edited = rec;
+  fromMap(data, edited);
+  // Same identity is modified in place; a new one replaces the account
+  if (keyOf(edited) != oldId && refuseIfBusy(rec))
+    return;
+  rec = edited;
   StorageService::instance().updateAccount(rec);
   emit dataChanged(this->index(index), this->index(index));
 
@@ -259,6 +278,8 @@ void AccountModel::removeAccount(int index) {
     return;
 
   const AccountRecord rec = m_accounts[index];
+  if (refuseIfBusy(rec))
+    return;
   StorageService::instance().removeAccount(rec.id);
   if (rec.active)
     SipService::instance().unregisterAccount(keyOf(rec));
@@ -274,6 +295,8 @@ void AccountModel::toggleActive(int index) {
     return;
 
   AccountRecord &rec = m_accounts[index];
+  if (refuseIfBusy(rec)) // only an active account can be busy
+    return;
   rec.active = !rec.active;
   StorageService::instance().updateAccount(rec);
   emit dataChanged(this->index(index), this->index(index), {ActiveRole});

@@ -10,7 +10,6 @@ Linux is the only platform this has been built and tested on.
   Dialogs and Qt5Compat.GraphicalEffects
 - Libraries PJSIP is compiled against: OpenSSL, Opus, libvpx, V4L2, ALSA,
   SDL2, libuuid (openh264, opencore-amr and bcg729 are picked up if present)
-- Optional: libsecret, to keep SIP passwords in the desktop keyring
 - autoconf, automake, libtool (PJSIP is built from source by Conan)
 
 The `Dockerfile` lists the exact Debian package names.
@@ -83,7 +82,8 @@ All three compile everything with [zig](https://ziglang.org) and link PJSIP,
 OpenSSL, Opus and the C++ runtime statically. Qt comes from the official Qt
 binaries for the target platform and is shipped next to the executable, so
 each build produces a folder to copy to the target machine, not a single
-file. zig and the Qt downloader are installed into `.venv` when missing;
+file. zig and the Qt downloader are installed into `.venv` when missing, at
+the versions pinned in the Makefile;
 downloads are kept in `build-cache/` and shared between the builds.
 
 Per platform:
@@ -101,9 +101,14 @@ Per platform:
   and `MACOS_MIN` select the target. **This target has not been run**: there
   was no SDK to build against.
 
-These builds have no video and no keyring support: SDL, the capture
-backends, the video codecs and libsecret would each need to be built the
-same way. The video controls are hidden in them.
+These builds have no video: SDL, the capture backends and the video codecs
+would each need to be built the same way. The video controls are hidden in
+them.
+
+Source downloads are checked against the SHA-256 values in the Makefile, so
+changing `PJSIP_VERSION`, `OPENSSL_VERSION` or `OPUS_VERSION` means changing
+the matching `*_SHA256` too. `make static-clean` removes the build folders;
+`make cache-clean` removes the downloads and Qt kits as well.
 
 ## Docker
 

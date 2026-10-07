@@ -6,6 +6,11 @@ JOBS  ?= $(shell nproc)
 
 .DEFAULT_GOAL := help
 
+# Build tools installed into the venv, pinned so a build is repeatable
+CONAN_VERSION ?= 2.33.0
+ZIG_VERSION   ?= 0.16.0
+AQT_VERSION   ?= 3.3.0
+
 ##@ Regular build (system libraries, Conan-built PJSIP; see BUILD.md)
 
 .PHONY: build
@@ -13,7 +18,7 @@ build: $(VENV)/bin/conan ## Build the app and the test into build/Release
 	./build.sh
 
 .PHONY: test
-test: ## Run the loopback call test (needs `make build`)
+test: build ## Build, then run the loopback call test
 	ctest --preset conan-release --output-on-failure
 
 .PHONY: run
@@ -32,7 +37,7 @@ $(VENV)/bin/python:
 	python3 -m venv $(VENV)
 
 $(VENV)/bin/conan: | $(VENV)/bin/python
-	$(VENV)/bin/pip install -q conan
+	$(VENV)/bin/pip install -q conan==$(CONAN_VERSION)
 	$(VENV)/bin/conan profile detect --exist-ok
 
 ##@ Portable and cross builds (zig)
@@ -52,9 +57,13 @@ $(VENV)/bin/conan: | $(VENV)/bin/python
 
 GLIBC           ?= 2.35
 QT_VERSION      ?= 6.8.3
-PJSIP_VERSION   ?= 2.14.1
-OPENSSL_VERSION ?= 3.0.16
+PJSIP_VERSION   ?= 2.17
+OPENSSL_VERSION ?= 3.5.9
 OPUS_VERSION    ?= 1.5.2
+# Checked after download; change these together with the versions
+PJSIP_SHA256    ?= 065fe06c06788d97c35f563796d59f00ce52fe9558a52d7b490a042a966facce
+OPENSSL_SHA256  ?= 603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a
+OPUS_SHA256     ?= 65c1d2f78b9f2fb20082c38cbe47c951ad5839345876e46941612ee87f9a7ce1
 # macOS: zig has no Apple frameworks, so point this at a MacOSX.sdk
 MACOS_SDK       ?=
 MACOS_ARCH      ?= aarch64
@@ -77,8 +86,7 @@ ifeq ($(PLATFORM),linux)
   DEP_LDFLAGS    := -L$(HOST)/lib -Wl,--allow-shlib-undefined
   # Qt's OpenGL and xkb lookups must not put /usr/include on the path
   CMAKE_PLATFORM  = $(foreach v,OPENGL OPENGL_EGL OPENGL_GLX OPENGL_GLU OPENGL_GLES2 OPENGL_GLES3 XKB,-D$(v)_INCLUDE_DIR=$(HOST)/include) \
-                    -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON -DCMAKE_INSTALL_RPATH='$$ORIGIN/lib' \
-                    -DCMAKE_EXE_LINKER_FLAGS="$(DEP_LDFLAGS)"
+                    -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON -DCMAKE_INSTALL_RPATH='$$ORIGIN/lib'
 else ifeq ($(PLATFORM),windows)
   S              := $(CURDIR)/build-windows
   ZIG_TARGET     := x86_64-windows-gnu
@@ -88,6 +96,9 @@ else ifeq ($(PLATFORM),windows)
   QT_KIT         := windows desktop $(QT_VERSION) win64_llvm_mingw
   QT             := $(CACHE)/qt/$(QT_VERSION)/llvm-mingw_64
   EXE            := .exe
+  # What a static OpenSSL needs on Windows; PJSIP's configure links its SSL
+  # test without them and, failing, drops TLS and Opus
+  DEP_LIBS       := -lcrypto -lws2_32 -lcrypt32 -lbcrypt -ladvapi32 -luser32 -lgdi32
   # CMake wants a resource compiler for Windows even with no .rc files
   RC             ?= $(shell command -v llvm-windres || command -v x86_64-w64-mingw32-windres || echo /usr/bin/true)
   CMAKE_PLATFORM  = -DCMAKE_SYSTEM_NAME=Windows -DCMAKE_SYSTEM_PROCESSOR=AMD64 \
@@ -109,7 +120,13 @@ else
   $(error PLATFORM must be linux, windows or macos)
 endif
 
-PREFIX   := $(S)/prefix
+# Versioned, so changing a version rebuilds it and never mixes in the
+# headers of the one before
+PREFIX       := $(S)/deps-openssl$(OPENSSL_VERSION)-opus$(OPUS_VERSION)
+PJSIP_PREFIX := $(S)/pjsip-$(PJSIP_VERSION)-install
+OPENSSL_STAMP := $(S)/.openssl-$(OPENSSL_VERSION)
+OPUS_STAMP    := $(S)/.opus-$(OPUS_VERSION)
+PJSIP_STAMP   := $(S)/.pjsip-$(PJSIP_VERSION)-openssl$(OPENSSL_VERSION)-opus$(OPUS_VERSION)
 DIST     := $(S)/dist
 ZCC      := $(S)/bin/zig-cc
 ZCXX     := $(S)/bin/zig-c++
@@ -154,8 +171,12 @@ windows-test: ## Run the call test from the Windows folder under wine
 	cd build-windows/dist && WINEDEBUG=-all QT_QPA_PLATFORM=offscreen wine call_flow_test.exe
 
 .PHONY: static-clean
-static-clean: ## Remove build-static/, build-windows/, build-macos/ and build-cache/
-	rm -rf build-static build-windows build-macos build-cache
+static-clean: ## Remove build-static/, build-windows/ and build-macos/
+	rm -rf build-static build-windows build-macos
+
+.PHONY: cache-clean
+cache-clean: ## Remove build-cache/ (the downloaded sources and Qt kits, about 3 GB)
+	rm -rf build-cache
 
 .PHONY: portable
 portable: $(DIST)/microsip_clone$(EXE)
@@ -167,7 +188,7 @@ portable: $(DIST)/microsip_clone$(EXE)
 # -fno-sanitize=undefined: zig turns UBSan traps on by default.
 $(S)/.tools: | $(VENV)/bin/python
 	@mkdir -p $(S)/bin $(DL)
-	@command -v zig >/dev/null 2>&1 || $(VENV)/bin/python -c 'import ziglang' 2>/dev/null || $(VENV)/bin/pip install -q ziglang
+	@command -v zig >/dev/null 2>&1 || $(VENV)/bin/python -c 'import ziglang' 2>/dev/null || $(VENV)/bin/pip install -q ziglang==$(ZIG_VERSION)
 	@printf '#!/bin/sh\nexec $(ZIG) cc -target $(ZIG_TARGET) $(ZIG_SYSROOT) -fno-sanitize=undefined "$$@"\n'  > $(ZCC)
 	@printf '#!/bin/sh\nexec $(ZIG) c++ -target $(ZIG_TARGET) $(ZIG_SYSROOT) -fno-sanitize=undefined "$$@"\n' > $(ZCXX)
 	@printf '#!/bin/sh\nexec $(ZIG) ar "$$@"\n'     > $(S)/bin/zig-ar
@@ -190,16 +211,24 @@ $(S)/.host: $(S)/.tools
 
 # --- dependencies ----------------------------------------------------------
 
+# $(call fetch,url,sha256): download to a temporary name and keep the file
+# only if its checksum matches
+define fetch
+	curl -fL -o $@.part $(1)
+	echo "$(2)  $@.part" | sha256sum -c - || { rm -f $@.part; exit 1; }
+	mv $@.part $@
+endef
+
 $(DL)/openssl-$(OPENSSL_VERSION).tar.gz: | $(S)/.tools
-	curl -fL -o $@ https://github.com/openssl/openssl/releases/download/openssl-$(OPENSSL_VERSION)/openssl-$(OPENSSL_VERSION).tar.gz
+	$(call fetch,https://github.com/openssl/openssl/releases/download/openssl-$(OPENSSL_VERSION)/openssl-$(OPENSSL_VERSION).tar.gz,$(OPENSSL_SHA256))
 
 $(DL)/opus-$(OPUS_VERSION).tar.gz: | $(S)/.tools
-	curl -fL -o $@ https://downloads.xiph.org/releases/opus/opus-$(OPUS_VERSION).tar.gz
+	$(call fetch,https://downloads.xiph.org/releases/opus/opus-$(OPUS_VERSION).tar.gz,$(OPUS_SHA256))
 
 $(DL)/pjproject-$(PJSIP_VERSION).tar.gz: | $(S)/.tools
-	curl -fL -o $@ https://github.com/pjsip/pjproject/archive/refs/tags/$(PJSIP_VERSION).tar.gz
+	$(call fetch,https://github.com/pjsip/pjproject/archive/refs/tags/$(PJSIP_VERSION).tar.gz,$(PJSIP_SHA256))
 
-$(S)/.openssl: $(DL)/openssl-$(OPENSSL_VERSION).tar.gz $(S)/.tools
+$(OPENSSL_STAMP): $(DL)/openssl-$(OPENSSL_VERSION).tar.gz $(S)/.tools
 	rm -rf $(S)/openssl-$(OPENSSL_VERSION) && tar -xzf $< -C $(S)
 	cd $(S)/openssl-$(OPENSSL_VERSION) && $(ZIG_ENV) ./Configure $(OPENSSL_TARGET) \
 	  no-shared no-tests no-engine no-dso \
@@ -208,7 +237,7 @@ $(S)/.openssl: $(DL)/openssl-$(OPENSSL_VERSION).tar.gz $(S)/.tools
 	$(MAKE) -C $(S)/openssl-$(OPENSSL_VERSION) install_dev >> $(S)/openssl.log 2>&1
 	@touch $@
 
-$(S)/.opus: $(DL)/opus-$(OPUS_VERSION).tar.gz $(S)/.tools
+$(OPUS_STAMP): $(DL)/opus-$(OPUS_VERSION).tar.gz $(S)/.tools
 	rm -rf $(S)/opus-$(OPUS_VERSION) && tar -xzf $< -C $(S)
 	cd $(S)/opus-$(OPUS_VERSION) && $(ZIG_ENV) ./configure $(CONF_HOST) --prefix=$(PREFIX) \
 	  --disable-shared --disable-doc --disable-extra-programs > $(S)/opus.log 2>&1
@@ -218,20 +247,24 @@ $(S)/.opus: $(DL)/opus-$(OPUS_VERSION).tar.gz $(S)/.tools
 # Audio only; see the note at the top of this section.
 # OBJEXT: configure sees zig name Windows objects .obj, but PJSIP's makefiles
 # list every object as .o and compile with an explicit -o
-$(S)/.pjsip: $(DL)/pjproject-$(PJSIP_VERSION).tar.gz $(S)/.openssl $(S)/.opus $(HOST_STAMP)
-	rm -rf $(S)/pjproject-$(PJSIP_VERSION) && tar -xzf $< -C $(S)
+$(PJSIP_STAMP): $(DL)/pjproject-$(PJSIP_VERSION).tar.gz $(OPENSSL_STAMP) $(OPUS_STAMP) $(HOST_STAMP)
+	rm -rf $(S)/pjproject-$(PJSIP_VERSION) $(PJSIP_PREFIX) && tar -xzf $< -C $(S)
+	@# IPv6 is off by default; in config_site.h so the installed headers agree
+	echo '#define PJ_HAS_IPV6 1' >> $(S)/pjproject-$(PJSIP_VERSION)/pjlib/include/pj/config_site.h
 	@# Windows headers are lower case; it only matters on a case-sensitive disk
 	sed -i -E 's/^(#[[:space:]]*include <)([A-Za-z_]+\.h>)/\1\L\2/' $(S)/pjproject-$(PJSIP_VERSION)/pjmedia/src/pjmedia-audiodev/wmme_dev.c
 	cd $(S)/pjproject-$(PJSIP_VERSION) && $(ZIG_ENV) \
 	  CFLAGS="-O2 -DNDEBUG $(DEP_CFLAGS)" CXXFLAGS="-O2 -DNDEBUG $(DEP_CFLAGS)" \
-	  LDFLAGS="$(DEP_LDFLAGS)" \
-	  ./aconfigure $(CONF_HOST) --prefix=$(PREFIX) --disable-shared \
+	  LDFLAGS="-L$(PREFIX)/lib $(DEP_LDFLAGS)" LIBS="$(DEP_LIBS)" \
+	  ./aconfigure $(CONF_HOST) --prefix=$(PJSIP_PREFIX) --disable-shared \
 	  --with-ssl=$(PREFIX) --with-opus=$(PREFIX) \
 	  --disable-video --disable-sdl --disable-v4l2 --disable-ffmpeg \
 	  --disable-openh264 --disable-vpx --disable-libyuv --disable-libwebrtc \
 	  --disable-opencore-amr --disable-bcg729 --disable-silk --disable-libuuid \
 	  > $(S)/pjsip.log 2>&1
 	sed -i 's/^export OBJEXT := .*/export OBJEXT := .o/' $(S)/pjproject-$(PJSIP_VERSION)/build/cc-auto.mak
+	@grep -q "SSL support enabled" $(S)/pjsip.log && grep -q "opus_repacketizer_get_size in -lopus... yes" $(S)/pjsip.log || \
+	  { echo "PJSIP's configure did not pick up OpenSSL or Opus, see $(S)/pjsip.log"; exit 1; }
 	$(MAKE) -C $(S)/pjproject-$(PJSIP_VERSION) dep >> $(S)/pjsip.log 2>&1
 	$(MAKE) -C $(S)/pjproject-$(PJSIP_VERSION) -j$(JOBS) lib >> $(S)/pjsip.log 2>&1
 	$(MAKE) -C $(S)/pjproject-$(PJSIP_VERSION) install >> $(S)/pjsip.log 2>&1
@@ -240,7 +273,7 @@ $(S)/.pjsip: $(DL)/pjproject-$(PJSIP_VERSION).tar.gz $(S)/.openssl $(S)/.opus $(
 # Official Qt binaries for the target. A cross build also needs the Linux
 # kit: moc, rcc and the QML tools run on this machine.
 $(QT_STAMP): | $(S)/.tools
-	@$(VENV)/bin/python -c 'import aqt' 2>/dev/null || $(VENV)/bin/pip install -q aqtinstall
+	@$(VENV)/bin/python -c 'import aqt' 2>/dev/null || $(VENV)/bin/pip install -q aqtinstall==$(AQT_VERSION)
 	@test -d $(QT_HOST) || $(VENV)/bin/aqt install-qt linux desktop $(QT_VERSION) linux_gcc_64 -m qt5compat qtshadertools -O $(CACHE)/qt > $(CACHE)/qt-linux.log 2>&1
 	@test -d $(QT) || $(VENV)/bin/aqt install-qt $(QT_KIT) -m qt5compat qtshadertools -O $(CACHE)/qt > $(CACHE)/qt-$(PLATFORM).log 2>&1
 	@touch $@
@@ -249,13 +282,16 @@ $(QT_STAMP): | $(S)/.tools
 
 SOURCES := $(shell find src tests -type f) CMakeLists.txt
 
-$(S)/app/microsip_clone$(EXE): $(SOURCES) $(S)/.pjsip $(QT_STAMP) $(HOST_STAMP)
-	PKG_CONFIG_LIBDIR=$(PREFIX)/lib/pkgconfig cmake -S . -B $(S)/app \
+$(S)/app/microsip_clone$(EXE): $(SOURCES) $(PJSIP_STAMP) $(QT_STAMP) $(HOST_STAMP)
+	@# CMake caches what pkg-config said about PJSIP; forget it in case PJSIP changed
+	@rm -f $(S)/app/CMakeCache.txt
+	PKG_CONFIG_LIBDIR=$(PJSIP_PREFIX)/lib/pkgconfig cmake -S . -B $(S)/app \
 	  -DCMAKE_BUILD_TYPE=Release \
 	  -DCMAKE_C_COMPILER=$(ZCC) -DCMAKE_CXX_COMPILER=$(ZCXX) \
 	  -DCMAKE_AR=$(S)/bin/zig-ar -DCMAKE_RANLIB=$(S)/bin/zig-ranlib \
 	  -DCMAKE_PREFIX_PATH=$(QT) \
-	  -DMICROSIP_PJSIP_PKGCONFIG=ON -DMICROSIP_KEYRING=OFF \
+	  -DMICROSIP_PJSIP_PKGCONFIG=ON \
+	  -DCMAKE_EXE_LINKER_FLAGS="-L$(PREFIX)/lib $(DEP_LDFLAGS)" \
 	  $(CMAKE_PLATFORM) > $(S)/app.log 2>&1
 	@! grep -q -- '-isystem /usr/include\|-I/usr/include' $(S)/app/CMakeFiles/*/flags.make || \
 	  { echo "system headers leaked into the build, see $(S)/app/CMakeFiles/*/flags.make"; exit 1; }

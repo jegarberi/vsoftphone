@@ -24,6 +24,7 @@ public:
   // Must run before any pj::Account is destroyed: the account deletes the
   // buddies attached to it.
   void clear() { m_buddies.clear(); }
+  int count() const { return m_buddies.size(); }
 
 private:
   explicit BuddyService(QObject *parent = nullptr);

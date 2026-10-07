@@ -6,7 +6,6 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 option(MICROSIP_PJSIP_PKGCONFIG "Find a statically built PJSIP through pkg-config instead of Conan" OFF)
-option(MICROSIP_KEYRING "Keep passwords in the desktop keyring when libsecret is present" ON)
 
 find_package(PkgConfig)
 if(MICROSIP_PJSIP_PKGCONFIG)
@@ -71,13 +70,11 @@ if(NOT MSVC)
     target_compile_options(microsip_core PRIVATE -Wall -Wextra)
 endif()
 
-# Optional: keep SIP passwords in the desktop keyring instead of the database
-if(MICROSIP_KEYRING AND PkgConfig_FOUND)
-    pkg_check_modules(LIBSECRET IMPORTED_TARGET libsecret-1)
-endif()
-if(LIBSECRET_FOUND)
-    target_link_libraries(microsip_core PUBLIC PkgConfig::LIBSECRET)
-    target_compile_definitions(microsip_core PUBLIC HAVE_LIBSECRET=1)
+# Keyring.cpp loads libsecret at run time on Linux and uses the Credential
+# Manager on Windows
+target_link_libraries(microsip_core PUBLIC ${CMAKE_DL_LIBS})
+if(WIN32)
+    target_link_libraries(microsip_core PUBLIC advapi32)
 endif()
 
 add_executable(microsip_clone

@@ -24,6 +24,7 @@
 #include "models/MessageModel.h"
 #include "pjsip_wrapper/BlfService.h"
 #include "pjsip_wrapper/CallService.h"
+#include "pjsip_wrapper/Keyring.h"
 #include "pjsip_wrapper/SipService.h"
 #include "pjsip_wrapper/SipUri.h"
 #include "pjsip_wrapper/StorageService.h"
@@ -142,6 +143,24 @@ int main(int argc, char *argv[]) {
   CHECK(!hasIpHost("1001") && !hasIpHost("bob@pbx.example.com"));
   CHECK(!hasIpHost("1001@pbx.example.com:5060"));
 
+  // --- password store round trip, only on request: it uses the real store ---
+  // MICROSIP_TEST_KEYRING=1 build/Release/call_flow_test
+  if (qEnvironmentVariableIsSet("MICROSIP_TEST_KEYRING")) {
+    const QString key = "call_flow_test/selftest";
+    bool found = true;
+    CHECK(Keyring::available());
+    Keyring::clear(key);
+    Keyring::lookup(key, &found);
+    CHECK(!found);
+    CHECK(Keyring::store(key, "s3cret \xc3\xb1"));
+    CHECK(Keyring::lookup(key, &found) == QString::fromUtf8("s3cret \xc3\xb1"));
+    CHECK(found);
+    Keyring::clear(key);
+    Keyring::lookup(key, &found);
+    CHECK(!found);
+    std::puts("call_flow_test: password store verified");
+  }
+
   // --- BroadWorks BLF NOTIFY: resource list of dialog-info documents ---------
   {
     const QByteArray body =
@@ -218,14 +237,23 @@ int main(int argc, char *argv[]) {
   CHECK(contacts.data(contacts.index(0), ContactsModel::GroupRole) == "Team");
 
   // --- busy lamps: a stored contact shows its lamp, unknown users get a row --
-  emit BlfService::instance().lampChanged("2001@127.0.0.1:9", "Alice A", "Busy");
-  emit BlfService::instance().lampChanged("2002@as.example.com", "Bob B",
-                                          "Ringing");
+  BlfService &blf = BlfService::instance();
+  emit blf.lampChanged(accountId, "2001@127.0.0.1:9", "Alice A", "Busy");
+  emit blf.lampChanged(accountId, "2002@as.example.com", "Bob B", "Ringing");
   CHECK(contacts.rowCount() == 2);
   CHECK(contacts.data(contacts.index(0), ContactsModel::StatusRole) == "Busy");
   CHECK(contacts.data(contacts.index(1), ContactsModel::NameRole) == "Bob B");
   CHECK(contacts.data(contacts.index(1), ContactsModel::GroupRole) == "BLF");
   CHECK(contacts.data(contacts.index(1), ContactsModel::StatusRole) == "Ringing");
+  contacts.removeContact(1); // a row from the server cannot be removed here
+  CHECK(contacts.rowCount() == 2);
+  // Lamps of another account's subscription are left alone; ours go away
+  emit blf.lampsCleared("someone@else");
+  CHECK(contacts.rowCount() == 2);
+  emit blf.lampsCleared(accountId);
+  CHECK(contacts.rowCount() == 1);
+  CHECK(contacts.data(contacts.index(0), ContactsModel::StatusRole) ==
+        "Offline");
 
   // --- BLF subscription goes out and a refusal is survived ------------------
   // Nothing here serves the dialog event, so the SUBSCRIBE is rejected.
@@ -244,9 +272,24 @@ int main(int argc, char *argv[]) {
     return mediaStatus(outgoing) == PJSUA_CALL_MEDIA_ACTIVE;
   }));
 
+  // An account in a call cannot be removed or switched off, and saving it
+  // again must leave the call usable (everything below still runs on it)
+  int busyRefusals = 0;
+  QObject::connect(&accounts, &AccountModel::accountBusy, &app,
+                   [&] { ++busyRefusals; });
+  accounts.removeAccount(0);
+  accounts.toggleActive(0);
+  CHECK(busyRefusals == 2);
+  CHECK(accounts.rowCount() == 1 && sip.getAccount(accountId));
+  accounts.updateAccount(0, account);
+  sip.applyNetworkSettings(); // nothing changed: must not touch the accounts
+  CHECK(busyRefusals == 2 && allConfirmed(2));
+
   CHECK(waitFor([&] { return micReaches(outgoing); }));
+  // Since PJSIP 2.15 the conference bridge applies connections on its own
+  // thread, so a change shows up a moment later
   callService.toggleMute(outgoing);
-  CHECK(!micReaches(outgoing));
+  CHECK(waitFor([&] { return !micReaches(outgoing); }));
 
   callService.holdCall(outgoing);
   CHECK(waitFor([&] {
@@ -259,7 +302,7 @@ int main(int argc, char *argv[]) {
   pump(200);
   CHECK(!micReaches(outgoing)); // mute survives the re-INVITE
   callService.toggleMute(outgoing);
-  CHECK(micReaches(outgoing));
+  CHECK(waitFor([&] { return micReaches(outgoing); }));
 
   CHECK(callService.toggleRecording(outgoing));
   pump(500);
@@ -431,9 +474,11 @@ int main(int argc, char *argv[]) {
   // every account rebuild races an incoming SUBSCRIBE against the deletion.
   contacts.addContact("Self", "tester");
   for (int i = 0; i < 15; ++i) {
-    accounts.updateAccount(0, account);
+    accounts.toggleActive(0); // deletes the account
+    accounts.toggleActive(0); // and creates it again
     pump(30);
   }
+  accounts.updateAccount(0, account); // modified in place: no deletion
 
   // --- every window loads against the populated models without QML errors --
   {
@@ -466,11 +511,9 @@ int main(int argc, char *argv[]) {
   accounts.removeAccount(0);
   CHECK(accounts.rowCount() == 0);
   CHECK(!sip.getAccount(accountId));
-  CHECK(contacts.rowCount() == 3); // Self, Alice, and the BLF row
-  contacts.removeContact(2); // server-provided BLF row: not removable
-  CHECK(contacts.rowCount() == 3);
+  CHECK(contacts.rowCount() == 2); // Self and Alice
   contacts.removeContact(0);
-  CHECK(contacts.rowCount() == 2);
+  CHECK(contacts.rowCount() == 1);
   pump(200);
 
   // --- direct IP call with no SIP account at all ---------------------------
@@ -486,6 +529,21 @@ int main(int argc, char *argv[]) {
   callService.hangupCall(callId(0));
   CHECK(waitFor([] { return CallModel::instance().rowCount() == 0; }));
 
+  // --- direct IP calls can be turned off: 403, no ringing, no history --------
+  {
+    const int ringsBefore = incomingSignals;
+    const int missedBefore = historyCount("Missed");
+    sip.setAcceptIpCalls(false);
+    lastFinalStatus = 0;
+    callService.makeCall("", "sip:" + domain);
+    CHECK(waitFor([&] { return lastFinalStatus == 403; }));
+    CHECK(waitFor([] { return CallModel::instance().rowCount() == 0; }));
+    pump(200);
+    CHECK(incomingSignals == ringsBefore);
+    CHECK(historyCount("Missed") == missedBefore);
+    sip.setAcceptIpCalls(true);
+  }
+
   // --- starting a second call puts the first on hold ------------------------
   sip.setAutoAnswer(true);
   callService.makeCall("", "sip:" + domain);
@@ -496,6 +554,8 @@ int main(int argc, char *argv[]) {
   CHECK(calls.data(calls.index(0), CallModel::IsHeldRole).toBool());
   CHECK(waitFor([] { return CallModel::instance().rowCount() == 4; }));
   pump(500);
+  // Auto answer leaves the new call ringing while another is connected
+  CHECK(callState(3) != "CONFIRMED");
   while (calls.rowCount() > 0) {
     const int rows = calls.rowCount();
     callService.hangupCall(callId(0));

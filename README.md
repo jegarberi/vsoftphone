@@ -23,8 +23,9 @@ on Linux, with a cross-compiled Windows build.
 
 - Video calls are negotiated and shown in PJSIP's own SDL windows, not inside
   the call window
-- SIP passwords are kept in the desktop keyring when libsecret and a keyring
-  service are available; otherwise they stay unencrypted in the local SQLite
+- SIP passwords are kept in the system password store: the desktop keyring
+  on Linux (libsecret, loaded when present) and the Credential Manager on
+  Windows. Where there is none they stay unencrypted in the local SQLite
   database (the file is readable by the owner only)
 - "IPv6 only" accounts use IPv6 signalling over UDP only
 - Busy lamp fields are verified against sample NOTIFY bodies, not against a
@@ -32,6 +33,16 @@ on Linux, with a cross-compiled Windows build.
 - Windows is cross-compiled and tested under wine only; the macOS build
   target exists but has never been built
 - No in-call file transfer; no Android or iOS builds
+
+## Licensing
+
+This repository has no licence file yet; choosing one is up to the owner.
+Whatever is chosen has to fit the libraries the binaries contain or ship:
+
+- PJSIP: GPL v2 or later (or a commercial licence from Teluu). A binary that
+  links it can only be handed to others under GPL-compatible terms
+- Qt: LGPL v3 (shipped as separate shared libraries in the portable folders)
+- OpenSSL: Apache 2.0; Opus: BSD
 
 ## Building
 

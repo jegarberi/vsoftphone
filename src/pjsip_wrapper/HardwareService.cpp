@@ -29,10 +29,8 @@ void HardwareService::restoreSettings() {
       settings.value("audio/playback").toString());
   if (capture >= 0 || playback >= 0)
     setAudioDevice(capture, playback);
-  if (settings.contains("audio/speakerVolume"))
-    setSpeakerVolume(settings.value("audio/speakerVolume").toFloat());
-  if (settings.contains("audio/micVolume"))
-    setMicVolume(settings.value("audio/micVolume").toFloat());
+  // Volumes are not restored: they are the device's own mixer levels, and
+  // forcing ours at startup would override what the user set elsewhere
   if (settings.contains("audio/echoCancellation"))
     setEchoCancellation(settings.value("audio/echoCancellation").toBool());
 }
@@ -43,8 +41,6 @@ void HardwareService::saveSettings() {
                     m_audioCaptureDevices.value(m_captureIndex));
   settings.setValue("audio/playback",
                     m_audioPlaybackDevices.value(m_playbackIndex));
-  settings.setValue("audio/speakerVolume", speakerVolume());
-  settings.setValue("audio/micVolume", micVolume());
   settings.setValue("audio/echoCancellation", m_echoCancellation);
 }
 

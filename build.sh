@@ -2,7 +2,7 @@
 set -e
 
 echo "=== Exporting PJSIP Recipe ==="
-.venv/bin/conan export conan/pjsip --version=2.14.1
+.venv/bin/conan export conan/pjsip --version=2.17
 
 echo "=== Installing Dependencies with Conan ==="
 # This will build PJSIP and other dependencies if missing

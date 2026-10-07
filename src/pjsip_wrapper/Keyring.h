@@ -3,9 +3,10 @@
 
 #include <QString>
 
-// The desktop keyring (Secret Service, through libsecret). Everything fails
-// soft: without libsecret, without a keyring daemon, or in tests, callers fall
-// back to keeping the secret where it was.
+// The operating system's password store: the Secret Service keyring on Linux
+// (through libsecret, loaded at run time) and the Credential Manager on
+// Windows. Everything fails soft: where there is no store, or in tests,
+// callers keep the secret where it was.
 namespace Keyring {
 bool available();
 bool store(const QString &key, const QString &secret);

@@ -3,6 +3,7 @@
 #include "BuddyService.h"
 #include "CallService.h"
 #include "Keyring.h"
+#include "PresenceService.h"
 #include "HardwareService.h"
 #include "StorageService.h"
 #include "SipUri.h"
@@ -31,6 +32,7 @@ SipService::SipService(QObject *parent)
   QSettings settings;
   m_doNotDisturb = settings.value("calls/doNotDisturb", false).toBool();
   m_autoAnswer = settings.value("calls/autoAnswer", false).toBool();
+  m_acceptIpCalls = settings.value("calls/acceptIpCalls", true).toBool();
 
   // Keyring when there is one, settings file otherwise
   bool found = false;
@@ -44,10 +46,39 @@ QVariant SipService::net(const char *key, const QVariant &fallback) const {
                            fallback);
 }
 
-void SipService::setNet(const char *key, const QVariant &value) {
+// Unchanged values are ignored: applying settings re-registers accounts,
+// which should happen only when something they use is different.
+void SipService::setNet(const char *key, const QVariant &value,
+                        const QVariant &fallback) {
+  if (net(key, fallback).toString() == value.toString())
+    return;
   QSettings().setValue(QLatin1String("network/") + QLatin1String(key), value);
   m_networkDirty = true;
   emit networkSettingsChanged();
+}
+
+void SipService::setAcceptIpCalls(bool enabled) {
+  if (m_acceptIpCalls.exchange(enabled) == enabled)
+    return;
+  QSettings().setValue("calls/acceptIpCalls", enabled);
+  emit networkSettingsChanged();
+}
+
+bool SipService::hasActiveCalls(const QString &id) const {
+  const auto acc = m_accounts.value(id);
+  if (!acc)
+    return false;
+  pjsua_call_id ids[PJSUA_MAX_CALLS];
+  unsigned count = PJ_ARRAY_SIZE(ids);
+  if (pjsua_enum_calls(ids, &count) != PJ_SUCCESS)
+    return false;
+  for (unsigned i = 0; i < count; ++i) {
+    pjsua_call_info info;
+    if (pjsua_call_get_info(ids[i], &info) == PJ_SUCCESS &&
+        info.acc_id == acc->getId())
+      return true;
+  }
+  return false;
 }
 
 void SipService::setTurnPassword(const QString &password) {
@@ -225,6 +256,7 @@ void SipService::init() {
       TransportConfig tls_cfg;
       if (tlsVerify()) {
         tls_cfg.tlsConfig.verifyServer = true;
+#ifdef Q_OS_UNIX
         for (const char *bundle : {"/etc/ssl/certs/ca-certificates.crt",
                                    "/etc/pki/tls/certs/ca-bundle.crt",
                                    "/etc/ssl/cert.pem"}) {
@@ -233,6 +265,7 @@ void SipService::init() {
             break;
           }
         }
+#endif
         // No bundle file (Windows, macOS): write out the system trust store,
         // which Qt can read on every platform
         if (tls_cfg.tlsConfig.CaListFile.empty()) {
@@ -245,6 +278,12 @@ void SipService::init() {
             for (const QSslCertificate &certificate : certificates)
               bundle.write(certificate.toPem());
             bundle.close();
+            if (certificates.isEmpty())
+              qWarning() << "No system CA certificates found: TLS servers "
+                            "cannot be verified, so TLS accounts will fail";
+            else
+              qInfo() << "TLS verifies against" << certificates.size()
+                      << "system CA certificates";
             tls_cfg.tlsConfig.CaListFile =
                 QFile::encodeName(bundle.fileName()).toStdString();
           }
@@ -360,15 +399,6 @@ void SipService::registerAccount(const QString &id, const QVariantMap &config) {
     return;
 
   try {
-    if (m_accounts.contains(id)) {
-      BlfService::instance().unsubscribe(id);
-      // An account deletes the buddies attached to it, so release ours first
-      runOnSipThread([this, &id] {
-        BuddyService::instance().clear();
-        m_accounts.remove(id);
-      });
-    }
-
     AccountConfig cfg;
     QString username = config["username"].toString();
     QString domain = config["domain"].toString();
@@ -511,10 +541,28 @@ void SipService::registerAccount(const QString &id, const QVariantMap &config) {
     cfg.videoConfig.autoShowIncoming = true;
     cfg.videoConfig.autoTransmitOutgoing = true;
 
-    auto acc = std::make_shared<MyAccount>();
-    acc->key = id;
-    acc->create(cfg);
-    m_accounts[id] = acc;
+    auto existing = m_accounts.value(id);
+    if (existing && hasActiveCalls(id)) {
+      // Deleting the account would pull its data out from under the call, so
+      // it is modified in place.
+      // ponytail: PJSIP's modify skips a few fields (the SDP address rewrite
+      // among them); those wait for the next change made while it is idle.
+      existing->modify(cfg);
+    } else {
+      if (existing) {
+        BlfService::instance().unsubscribe(id);
+        // An account deletes the buddies attached to it: release ours first
+        runOnSipThread([this, &id] {
+          BuddyService::instance().clear();
+          m_accounts.remove(id);
+        });
+      }
+      auto acc = std::make_shared<MyAccount>();
+      acc->key = id;
+      acc->create(cfg);
+      m_accounts[id] = acc;
+    }
+    PresenceService::instance().apply();
 
     qDebug() << "Registered account:" << id;
     BlfService::instance().subscribe(id, config["blfUri"].toString());
@@ -552,10 +600,14 @@ void MyAccount::onRegState(pj::OnRegStateParam &prm) {
 }
 void MyAccount::onIncomingCall(pj::OnIncomingCallParam &prm) {
   // PJSUA2 rejects the call with 500 unless a Call object takes it, so a call
-  // refused by Do Not Disturb still gets one; it ends up in history as Missed.
+  // we refuse still gets one.
   auto call = std::make_shared<MyCall>(*this, prm.callId);
   const int callId = prm.callId;
-  const bool rejected = SipService::instance().doNotDisturb();
+  // The local account has no key: this call was addressed to our IP address
+  const bool blocked = key.isEmpty() && !SipService::instance().acceptIpCalls();
+  const bool rejected = blocked || SipService::instance().doNotDisturb();
+  // Do Not Disturb leaves a Missed entry; a blocked stranger leaves nothing
+  call->silent = blocked;
   QString remoteUri;
   try {
     remoteUri = QString::fromStdString(call->getInfo().remoteUri);
@@ -567,18 +619,23 @@ void MyAccount::onIncomingCall(pj::OnIncomingCallParam &prm) {
   QMetaObject::invokeMethod(
       &CallService::instance(),
       [call, callId, remoteUri, rejected] {
-        CallService::instance().addCall(call);
+        CallService &calls = CallService::instance();
+        calls.addCall(call);
         if (rejected)
           return;
-        emit CallService::instance().incomingCall(callId, remoteUri);
-        if (SipService::instance().autoAnswer())
-          CallService::instance().answerCall(callId);
+        emit calls.incomingCall(callId, remoteUri);
+        // Auto answer must not interrupt a conversation already going on
+        if (SipService::instance().autoAnswer() &&
+            !calls.hasConnectedCall(callId))
+          calls.answerCall(callId);
       },
       Qt::QueuedConnection);
 
   try {
     CallOpParam response;
-    response.statusCode = rejected ? PJSIP_SC_BUSY_HERE : PJSIP_SC_RINGING;
+    response.statusCode = blocked    ? PJSIP_SC_FORBIDDEN
+                          : rejected ? PJSIP_SC_BUSY_HERE
+                                     : PJSIP_SC_RINGING;
     if (rejected)
       call->hangup(response);
     else

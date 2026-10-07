@@ -111,8 +111,11 @@ static pjsip_module g_blfModule = {
     nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
     nullptr};
 
-// Registers the "dialog" event package so that every SUBSCRIBE, refreshes
-// included, accepts resource lists, and advertises "eventlist" support.
+// True when the "dialog" event package is ours and so already advertises the
+// resource-list body types. PJSIP 2.16 and later register that package
+// themselves, for single-user dialog-info only.
+static bool g_ownPackage = false;
+
 static bool ensurePackage() {
   static bool ready = false;
   if (ready)
@@ -120,21 +123,41 @@ static bool ensurePackage() {
   pjsip_endpoint *endpt = pjsua_get_pjsip_endpt();
   if (pjsip_endpt_register_module(endpt, &g_blfModule) != PJ_SUCCESS)
     return false;
+  ready = true;
   pj_str_t accept[] = {{(char *)"application/dialog-info+xml", 27},
                        {(char *)"multipart/related", 17},
                        {(char *)"application/rlmi+xml", 20}};
-  if (pjsip_evsub_register_pkg(&g_blfModule, &STR_DIALOG, 3600, 3, accept) !=
-      PJ_SUCCESS)
-    return false;
+  g_ownPackage = pjsip_evsub_register_pkg(&g_blfModule, &STR_DIALOG, 3600, 3,
+                                          accept) == PJ_SUCCESS;
   pj_str_t eventlist = {(char *)"eventlist", 9};
   pjsip_endpt_add_capability(endpt, &g_blfModule, PJSIP_H_SUPPORTED, nullptr, 1,
                              &eventlist);
-  ready = true;
   return true;
 }
 
+// Sends a SUBSCRIBE (expires 0 ends the subscription), accepting resource
+// lists even when the package registered by PJSIP does not say so.
+static pj_status_t sendSubscribe(pjsip_evsub *sub, int expires) {
+  pjsip_tx_data *tdata = nullptr;
+  pj_status_t status = pjsip_evsub_initiate(sub, nullptr, expires, &tdata);
+  if (status != PJ_SUCCESS)
+    return status;
+  if (!g_ownPackage) {
+    const pj_str_t name = {(char *)"Accept", 6};
+    const pj_str_t value = {(char *)"multipart/related, application/rlmi+xml",
+                            39};
+    pjsip_msg_add_hdr(tdata->msg,
+                      (pjsip_hdr *)pjsip_generic_string_hdr_create(
+                          tdata->pool, &name, &value));
+  }
+  return pjsip_evsub_send_request(sub, tdata);
+}
+
+// Refreshes go through sendSubscribe too, for the same Accept header
+static void onClientRefresh(pjsip_evsub *sub) { sendSubscribe(sub, -1); }
+
 // PJSIP thread. The body is copied out and parsed on the GUI thread.
-static void onRxNotify(pjsip_evsub *, pjsip_rx_data *rdata, int *p_st_code,
+static void onRxNotify(pjsip_evsub *sub, pjsip_rx_data *rdata, int *p_st_code,
                        pj_str_t **, pjsip_hdr *, pjsip_msg_body **) {
   *p_st_code = 200;
   if (pjsua_get_state() != PJSUA_STATE_RUNNING)
@@ -153,12 +176,13 @@ static void onRxNotify(pjsip_evsub *, pjsip_rx_data *rdata, int *p_st_code,
   }
   const QByteArray data(static_cast<const char *>(body->data), body->len);
 
+  const QString accountId = BlfService::instance().accountOf(sub);
   QMetaObject::invokeMethod(
       &BlfService::instance(),
-      [boundary, data] {
+      [accountId, boundary, data] {
         for (const BlfLamp &lamp : BlfService::parseNotify(boundary, data))
-          emit BlfService::instance().lampChanged(lamp.uri, lamp.name,
-                                                  lamp.state);
+          emit BlfService::instance().lampChanged(accountId, lamp.uri,
+                                                  lamp.name, lamp.state);
       },
       Qt::QueuedConnection);
 }
@@ -182,6 +206,11 @@ BlfService::BlfService(QObject *parent) : QObject(parent) {
   };
 }
 
+QString BlfService::accountOf(pjsip_evsub *sub) {
+  QMutexLocker lock(&m_mutex);
+  return m_subs.key(sub);
+}
+
 // PJSIP thread: the pointer dies with this callback, so forget it right away
 void BlfService::subscriptionEnded(pjsip_evsub *sub) {
   QString accountId;
@@ -198,6 +227,7 @@ void BlfService::subscriptionEnded(pjsip_evsub *sub) {
   QMetaObject::invokeMethod(
       this,
       [this, accountId] {
+        emit lampsCleared(accountId);
         // A QTimer object rather than QTimer::singleShot(): see
         // QtLibcxxCompat.cpp
         auto *retry = new QTimer(this);
@@ -216,17 +246,16 @@ void BlfService::subscriptionEnded(pjsip_evsub *sub) {
 }
 
 void BlfService::unsubscribe(const QString &accountId) {
-  m_wanted.remove(accountId);
+  const bool wanted = m_wanted.remove(accountId) > 0;
   pjsip_evsub *sub = nullptr;
   {
     QMutexLocker lock(&m_mutex);
     sub = m_subs.take(accountId);
   }
-  if (!sub || pjsua_get_state() != PJSUA_STATE_RUNNING)
-    return;
-  pjsip_tx_data *tdata = nullptr;
-  if (pjsip_evsub_initiate(sub, nullptr, 0, &tdata) == PJ_SUCCESS)
-    pjsip_evsub_send_request(sub, tdata);
+  if (wanted)
+    emit lampsCleared(accountId);
+  if (sub && pjsua_get_state() == PJSUA_STATE_RUNNING)
+    sendSubscribe(sub, 0);
 }
 
 void BlfService::subscribe(const QString &accountId, const QString &listUri) {
@@ -291,6 +320,7 @@ void BlfService::subscribe(const QString &accountId, const QString &listUri) {
     pj_bzero(&callbacks, sizeof(callbacks));
     callbacks.on_evsub_state = &onEvsubState;
     callbacks.on_rx_notify = &onRxNotify;
+    callbacks.on_client_refresh = &onClientRefresh;
     status = pjsip_evsub_create_uac(dlg, &callbacks, &STR_DIALOG,
                                     PJSIP_EVSUB_NO_EVENT_ID, &sub);
     if (status == PJ_SUCCESS) {
@@ -299,10 +329,7 @@ void BlfService::subscribe(const QString &accountId, const QString &listUri) {
         QMutexLocker lock(&m_mutex);
         m_subs[accountId] = sub;
       }
-      pjsip_tx_data *tdata = nullptr;
-      status = pjsip_evsub_initiate(sub, nullptr, -1, &tdata);
-      if (status == PJ_SUCCESS)
-        status = pjsip_evsub_send_request(sub, tdata);
+      status = sendSubscribe(sub, -1);
       if (status != PJ_SUCCESS) {
         QMutexLocker lock(&m_mutex);
         if (m_subs.value(accountId) == sub) {

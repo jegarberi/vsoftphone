@@ -67,8 +67,12 @@ public:
 
 signals:
   void defaultAccountIdChanged();
+  // The requested change would delete an account that is in a call
+  void accountBusy(QString message);
 
 private:
+  bool refuseIfBusy(const AccountRecord &rec);
+
   QList<AccountRecord> m_accounts;
   QString m_selectedId; // preferred account; falls back to the first active
   QHash<QString, QString> m_status; // "user@domain" -> registration status

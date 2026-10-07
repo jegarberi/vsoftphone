@@ -1,8 +1,11 @@
 #include <QDir>
 #include <QFile>
 #include <QGuiApplication>
+#include <QLocalServer>
+#include <QLocalSocket>
 #include <QQmlApplicationEngine>
 #include <QStandardPaths>
+#include <QWindow>
 #ifdef Q_OS_WIN
 #include <windows.h>
 #else
@@ -39,9 +42,18 @@ int main(int argc, char *argv[]) {
   const bool alreadyRunning =
       lockFd < 0 || ::flock(lockFd, LOCK_EX | LOCK_NB) != 0;
 #endif
+  // The running copy listens here so that a second launch brings it forward
+#ifdef Q_OS_WIN
+  const QString activation =
+      "antigravity-microsipclone-" + qEnvironmentVariable("USERNAME");
+#else
+  const QString activation = dataDir + "/activate.sock";
+#endif
   if (alreadyRunning) {
-    qCritical("MicrosipClone is already running");
-    return 1;
+    QLocalSocket running;
+    running.connectToServer(activation);
+    running.waitForConnected(1000);
+    return 0;
   }
 
   // Initialize SipService and StorageService
@@ -60,6 +72,22 @@ int main(int argc, char *argv[]) {
       },
       Qt::QueuedConnection);
   engine.load(url);
+
+  QLocalServer::removeServer(activation); // left behind by a crash
+  QLocalServer activationServer;
+  activationServer.listen(activation);
+  QObject::connect(&activationServer, &QLocalServer::newConnection, &app, [&] {
+    while (QLocalSocket *knock = activationServer.nextPendingConnection())
+      knock->deleteLater();
+    const auto roots = engine.rootObjects();
+    for (QObject *root : roots) {
+      if (auto *window = qobject_cast<QWindow *>(root)) {
+        window->show();
+        window->raise();
+        window->requestActivate();
+      }
+    }
+  });
 
   return app.exec();
 }

@@ -7,7 +7,7 @@ import subprocess
 
 class Pjsip(ConanFile):
     name = "pjsip"
-    version = "2.14.1"
+    version = "2.17"
     settings = "os", "compiler", "build_type", "arch"
     options = {"shared": [True, False], "fPIC": [True, False]}
     default_options = {"shared": False, "fPIC": True}
@@ -24,14 +24,19 @@ class Pjsip(ConanFile):
         self.tool_requires("pkgconf/2.2.0")
 
     def source(self):
-        # Downloading PJSIP 2.14.1 source
-        get(self, "https://github.com/pjsip/pjproject/archive/refs/tags/2.14.1.tar.gz", strip_root=True)
+        get(self, f"https://github.com/pjsip/pjproject/archive/refs/tags/{self.version}.tar.gz",
+            sha256="065fe06c06788d97c35f563796d59f00ce52fe9558a52d7b490a042a966facce",
+            strip_root=True)
         # PJSIP's configure script is a wrapper that doesn't support out-of-source builds well.
         # We replace it with 'aconfigure' which is the actual autoconf script.
         os.rename("configure", "configure_wrapper")
         os.rename("aconfigure", "configure")
         # Fix permissions immediately
         self.run("chmod +x configure")
+        # IPv6 is off by default in PJSIP. Set here rather than on the command
+        # line so the installed headers say the same thing to the application.
+        with open("pjlib/include/pj/config_site.h", "a") as f:
+            f.write("#define PJ_HAS_IPV6 1\n")
 
     def generate(self):
         from conan.tools.env import VirtualBuildEnv
@@ -43,7 +48,7 @@ class Pjsip(ConanFile):
         tc.configure_args.extend([
             "--disable-libwebrtc",
             "--enable-video",
-            # ponytail: PJSIP (checked up to 2.16) does not compile against
+            # ponytail: PJSIP (checked up to 2.17) does not compile against
             # FFmpeg >= 8, so the ffmpeg codecs (H.264/H.263) are off.
             # Drop this and restore the av* system_libs once upstream catches up.
             "--disable-ffmpeg",

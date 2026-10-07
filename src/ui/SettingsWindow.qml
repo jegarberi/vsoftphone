@@ -9,10 +9,19 @@ ApplicationWindow {
     function applySettings() {
         Theme.saveSettings()
         hardwareService.setAudioDevice(micDevCombo.currentIndex, speakerDevCombo.currentIndex)
-        hardwareService.speakerVolume = speakerVolSlider.value
-        hardwareService.micVolume = micVolSlider.value
         hardwareService.echoCancellation = ecCheckBox.checked
         hardwareService.saveSettings()
+        for (var i = 0; i < codecRepeater.count; i++)
+            hardwareService.setCodecEnabled(codecRepeater.itemAt(i).text, codecRepeater.itemAt(i).checked)
+        // The volume sliders act at once; from here on Cancel keeps them
+        initialSpeakerVolume = hardwareService.speakerVolume
+        initialMicVolume = hardwareService.micVolume
+
+        sipService.doNotDisturb = dndCheck.checked
+        sipService.autoAnswer = autoAnswerCheck.checked
+        sipService.tlsVerify = tlsVerifyCheck.checked
+        sipService.acceptIpCalls = acceptIpCheck.checked
+        presenceService.status = presenceCombo.currentText
 
         sipService.stunEnabled = stunCheck.checked
         sipService.stunServer = stunField.text
@@ -29,6 +38,17 @@ ApplicationWindow {
     onClosing: {
         Theme.loadSettings()
         hardwareService.restoreSettings()
+        hardwareService.speakerVolume = initialSpeakerVolume
+        hardwareService.micVolume = initialMicVolume
+    }
+
+    // Volumes are the sound device's own levels: nothing is stored for them,
+    // closing without Apply just puts them back
+    property real initialSpeakerVolume: 1
+    property real initialMicVolume: 1
+    Component.onCompleted: {
+        initialSpeakerVolume = hardwareService.speakerVolume
+        initialMicVolume = hardwareService.micVolume
     }
     width: 600
     height: 700
@@ -74,32 +94,32 @@ ApplicationWindow {
                     }
 
                     CheckBox {
+                        id: dndCheck
                         text: "Do Not Disturb"
                         checked: sipService.doNotDisturb
-                        onToggled: sipService.doNotDisturb = checked
                     }
                     CheckBox {
-                        text: "Auto Answer"
+                        id: autoAnswerCheck
+                        text: "Auto Answer (when no other call is connected)"
                         checked: sipService.autoAnswer
-                        onToggled: sipService.autoAnswer = checked
                     }
 
                     CheckBox {
+                        id: tlsVerifyCheck
                         text: "Verify TLS server certificates (applies after restart)"
                         checked: sipService.tlsVerify
-                        onToggled: sipService.tlsVerify = checked
                     }
                     Button {
                         text: "Open recordings folder"
-                        onClicked: Qt.openUrlExternally("file://" + callService.recordingsDir())
+                        onClicked: Qt.openUrlExternally(callService.recordingsUrl())
                     }
 
                     RowLayout {
                         Label { text: "Presence" }
                         ComboBox {
+                            id: presenceCombo
                             model: ["Online", "Away", "Busy", "Offline"]
                             currentIndex: Math.max(0, model.indexOf(presenceService.status))
-                            onActivated: presenceService.status = currentText
                         }
                     }
                 }
@@ -196,11 +216,11 @@ ApplicationWindow {
                 ColumnLayout {
                     width: parent.width
                     Repeater {
+                        id: codecRepeater
                         model: hardwareService.audioCodecs
                         CheckBox {
                             text: modelData
                             checked: hardwareService.isCodecEnabled(modelData)
-                            onToggled: hardwareService.setCodecEnabled(modelData, checked)
                         }
                     }
                 }
@@ -273,6 +293,11 @@ ApplicationWindow {
                         id: mediaRportCheck
                         text: "rport for media: advertise in SDP the address the server saw us at"
                         checked: sipService.mediaRport
+                    }
+                    CheckBox {
+                        id: acceptIpCheck
+                        text: "Accept direct IP calls (anyone who can reach this machine can ring it)"
+                        checked: sipService.acceptIpCalls
                     }
                 }
             }

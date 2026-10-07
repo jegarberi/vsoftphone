@@ -16,6 +16,8 @@ public:
 
   QString status() const { return m_status; }
   void setStatus(const QString &newStatus);
+  // Publishes the current status on every account, e.g. after one was added
+  void apply();
 
 signals:
   void statusChanged(const QString &status);
