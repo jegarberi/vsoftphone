@@ -95,6 +95,18 @@ void SipService::init() {
                  << QString::fromStdString(err.info());
     }
 
+    // Client-only TLS on an ephemeral port.
+    // ponytail: server certificate is not verified (pjsua default); set
+    // tlsConfig.verifyServer + CA list when that matters.
+    try {
+      TransportConfig tls_cfg;
+      m_tlsTransportId =
+          m_endpoint->transportCreate(PJSIP_TRANSPORT_TLS, tls_cfg);
+    } catch (Error &err) {
+      qWarning() << "Could not create TLS transport:"
+                 << QString::fromStdString(err.info());
+    }
+
     m_endpoint->libStart();
     qDebug() << "PJSIP started";
 
@@ -116,7 +128,7 @@ void SipService::init() {
       qDebug() << "Available Codecs (Configuring...):";
       for (unsigned i = 0; i < codecs.size(); ++i) {
         QString codecId = QString::fromStdString(codecs[i].codecId);
-        bool priority = 0;
+        int priority = 0;
         if (codecId.contains("PCMU") || codecId.contains("PCMA") ||
             codecId.contains("G722") || codecId.contains("opus") ||
             codecId.contains("telephone-event")) {
@@ -185,16 +197,24 @@ void SipService::registerAccount(const QString &id, const QVariantMap &config) {
       cfg.sipConfig.transportId = m_tcpTransportId;
     } else if (transport == "tls") {
       transportParam = ";transport=tls";
+      cfg.sipConfig.transportId = m_tlsTransportId;
     } else if (transport == "udp") {
       transportParam = ";transport=udp";
-      if (config["rport"].toBool()) {
-        transportParam += ";rport";
-      }
       cfg.sipConfig.transportId = m_udpTransportId;
     }
 
+    QString displayName = config["displayName"].toString().remove('"');
     cfg.idUri = "<sip:" + (username + "@" + domain).toStdString() + ">";
-    cfg.regConfig.registrarUri = "sip:" + domain.toStdString() + transportParam;
+    if (!displayName.isEmpty())
+      cfg.idUri = "\"" + displayName.toStdString() + "\" " + cfg.idUri;
+
+    QString server = config["server"].toString();
+    if (server.isEmpty())
+      server = domain;
+    cfg.regConfig.registrarUri = "sip:" + server.toStdString() + transportParam;
+    if (config["registerRefresh"].toInt() > 0)
+      cfg.regConfig.timeoutSec = config["registerRefresh"].toInt();
+    cfg.presConfig.publishEnabled = config["publishPresence"].toBool();
 
     if (!proxy.isEmpty()) {
       cfg.sipConfig.proxies.push_back("sip:" + proxy.toStdString() +
@@ -310,6 +330,7 @@ void SipService::registerAccount(const QString &id, const QVariantMap &config) {
     }
 
     auto acc = std::make_shared<MyAccount>();
+    acc->key = id;
     acc->create(cfg);
     m_accounts[id] = acc;
 
@@ -340,19 +361,32 @@ void MyAccount::onRegState(pj::OnRegStateParam &prm) {
   qDebug() << (ai.regIsActive ? "*** Register:" : "*** Unregister:")
            << " code=" << prm.code;
 
-  // We need a way to signal back to SipService or UI
-  // SipService::instance().emit... (using singleton for now)
-  SipService::instance().accountStateChanged(
-      QString::number(getId()), ai.regIsActive, prm.code,
+  emit SipService::instance().accountStateChanged(
+      key, ai.regIsActive, prm.code,
       QString::fromStdString(prm.reason));
 }
 void MyAccount::onIncomingCall(pj::OnIncomingCallParam &prm) {
   auto call = std::make_shared<MyCall>(*this, prm.callId);
-  CallService::instance().addCall(call);
+  const int callId = prm.callId;
+  QString remoteUri;
+  try {
+    remoteUri = QString::fromStdString(call->getInfo().remoteUri);
+    CallOpParam ringing;
+    ringing.statusCode = PJSIP_SC_RINGING;
+    call->answer(ringing);
+  } catch (Error &err) {
+    qWarning() << "Error ringing incoming call:"
+               << QString::fromStdString(err.info());
+  }
 
-  CallInfo ci = call->getInfo();
-  CallService::instance().incomingCall(prm.callId,
-                                       QString::fromStdString(ci.remoteUri));
+  // PJSIP worker thread: hand the call over to the GUI thread
+  QMetaObject::invokeMethod(
+      &CallService::instance(),
+      [call, callId, remoteUri] {
+        CallService::instance().addCall(call);
+        emit CallService::instance().incomingCall(callId, remoteUri);
+      },
+      Qt::QueuedConnection);
 }
 
 void MyAccount::onInstantMessage(pj::OnInstantMessageParam &prm) {
@@ -380,6 +414,18 @@ void MyAccount::onTypingIndication(pj::OnTypingIndicationParam &prm) {
   emit SipService::instance().typingIndicationReceived(fromUri, prm.isTyping);
 }
 
+// Accepts "1001", "1001@host" or a full sip: URI; a bare user gets the
+// account's domain (accountId is "user@domain").
+static std::string toSipUri(const QString &destination,
+                            const QString &accountId) {
+  QString dest = destination;
+  if (dest.startsWith("sip:"))
+    dest = dest.mid(4);
+  if (!dest.contains('@'))
+    dest += accountId.mid(accountId.indexOf('@'));
+  return ("sip:" + dest).toStdString();
+}
+
 void SipService::sendMessage(const QString &accountId,
                              const QString &destination,
                              const QString &content) {
@@ -389,21 +435,32 @@ void SipService::sendMessage(const QString &accountId,
     return;
   }
 
-  try {
-    std::string destStr = destination.toStdString();
-    std::string contentStr = content.toStdString();
-    pj_str_t pj_dest = pj_str((char *)destStr.c_str());
-    pj_str_t pj_content = pj_str((char *)contentStr.c_str());
+  std::string destStr = toSipUri(destination, accountId);
+  std::string contentStr = content.toStdString();
+  pj_str_t pj_dest = pj_str((char *)destStr.c_str());
+  pj_str_t pj_content = pj_str((char *)contentStr.c_str());
 
-    pj_status_t status = pjsua_im_send(acc->getId(), &pj_dest, nullptr,
-                                       &pj_content, nullptr, nullptr);
-    if (status != PJ_SUCCESS) {
-      qWarning() << "Error sending SIP message:" << status;
-    }
-
-    // Save to database
-    StorageService::instance().addMessage(destination, "Outgoing", content);
-  } catch (const std::exception &e) {
-    qWarning() << "Exception sending message:" << e.what();
+  pj_status_t status = pjsua_im_send(acc->getId(), &pj_dest, nullptr,
+                                     &pj_content, nullptr, nullptr);
+  if (status != PJ_SUCCESS) {
+    qWarning() << "Error sending SIP message:" << status;
+    return;
   }
+
+  StorageService::instance().addMessage(destination, "Outgoing", content);
+}
+
+void SipService::sendTypingIndication(const QString &accountId,
+                                      const QString &destination,
+                                      bool isTyping) {
+  auto acc = getAccount(accountId);
+  if (!acc)
+    return;
+
+  std::string destStr = toSipUri(destination, accountId);
+  pj_str_t pj_dest = pj_str((char *)destStr.c_str());
+  pj_status_t status =
+      pjsua_im_typing(acc->getId(), &pj_dest, isTyping, nullptr);
+  if (status != PJ_SUCCESS)
+    qWarning() << "Error sending typing indication:" << status;
 }

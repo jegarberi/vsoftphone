@@ -9,7 +9,6 @@
         <file>ui/InCallWindow.qml</file>
         <file>ui/MessageWindow.qml</file>
         <file>ui/MessageView.qml</file>
-        <file>ui/MessageView.qml</file>
         <file>ui/components/AppButton.qml</file>
         <file>ui/components/AppCard.qml</file>
         <file>ui/components/AppTextField.qml</file>

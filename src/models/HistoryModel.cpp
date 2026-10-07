@@ -2,11 +2,20 @@
 #include "../pjsip_wrapper/StorageService.h"
 
 HistoryModel::HistoryModel(QObject *parent) : QAbstractListModel(parent) {
+  connect(&StorageService::instance(), &StorageService::callHistoryChanged,
+          this, &HistoryModel::reload);
+  reload();
+}
+
+void HistoryModel::reload() {
+  beginResetModel();
+  m_history.clear();
   QList<CallRecord> records = StorageService::instance().getCallHistory();
   for (const auto &rec : records) {
     m_history.append({QString::number(rec.id), rec.remoteParty, rec.direction,
                       rec.timestamp, rec.duration});
   }
+  endResetModel();
 }
 
 int HistoryModel::rowCount(const QModelIndex &parent) const {
@@ -49,12 +58,8 @@ QHash<int, QByteArray> HistoryModel::roleNames() const {
 
 void HistoryModel::addEntry(const QString &remoteParty,
                             const QString &direction, int duration) {
+  // callHistoryChanged reloads the model
   StorageService::instance().addCall(remoteParty, direction, duration);
-
-  beginInsertRows(QModelIndex(), 0, 0); // Add to top
-  m_history.prepend({QString::number(m_history.count() + 1), remoteParty,
-                     direction, QDateTime::currentDateTime(), duration});
-  endInsertRows();
 }
 
 void HistoryModel::clearHistory() {

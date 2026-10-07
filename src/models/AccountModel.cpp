@@ -8,6 +8,17 @@ AccountModel &AccountModel::instance() {
 }
 
 AccountModel::AccountModel(QObject *parent) : QAbstractListModel(parent) {
+  // Emitted from the PJSIP thread; `this` as context queues it to ours
+  connect(&SipService::instance(), &SipService::accountStateChanged, this,
+          [this](QString id, bool active, int code, QString text) {
+            m_status[id] = active ? "Registered"
+                           : code ? QString("%1 %2").arg(code).arg(text)
+                                  : text;
+            for (int i = 0; i < m_accounts.count(); ++i) {
+              if (m_accounts[i].username + "@" + m_accounts[i].domain == id)
+                emit dataChanged(index(i), index(i), {StatusRole});
+            }
+          });
   QList<AccountRecord> records = StorageService::instance().getAccounts();
   for (const auto &rec : records) {
     m_accounts.append({QString::number(rec.id),
@@ -137,6 +148,8 @@ QVariant AccountModel::data(const QModelIndex &index, int role) const {
     return account.rport;
   case ActiveRole:
     return account.active;
+  case StatusRole:
+    return m_status.value(account.username + "@" + account.domain);
   default:
     return QVariant();
   }
@@ -166,7 +179,9 @@ QHash<int, QByteArray> AccountModel::roleNames() const {
   roles[AutoNatRole] = "autoNat";
   roles[EnableStunRole] = "enableStun";
   roles[IpVersionRole] = "ipVersion";
+  roles[RportRole] = "rport";
   roles[ActiveRole] = "active";
+  roles[StatusRole] = "status";
   return roles;
 }
 
@@ -193,6 +208,7 @@ void AccountModel::addAccount(const QVariantMap &data) {
   rec.autoNat = data["autoNat"].toBool();
   rec.enableStun = data["enableStun"].toBool();
   rec.ipVersion = data["ipVersion"].toInt();
+  rec.rport = data["rport"].toBool();
   rec.active = true;
 
   StorageService::instance().addAccount(rec);
@@ -229,6 +245,8 @@ void AccountModel::addAccount(const QVariantMap &data) {
                        r.active});
   }
   endResetModel();
+  SipService::instance().registerAccount(rec.username + "@" + rec.domain,
+                                         data);
   emit defaultAccountIdChanged();
 }
 
@@ -311,8 +329,11 @@ void AccountModel::removeAccount(int index) {
   if (index < 0 || index >= m_accounts.count())
     return;
 
-  int id = m_accounts[index].id.toInt();
+  const Account &acc = m_accounts[index];
+  int id = acc.id.toInt();
   StorageService::instance().removeAccount(id);
+  if (acc.active)
+    SipService::instance().unregisterAccount(acc.username + "@" + acc.domain);
 
   beginRemoveRows(QModelIndex(), index, index);
   m_accounts.removeAt(index);

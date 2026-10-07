@@ -13,6 +13,7 @@ class HardwareService : public QObject {
   Q_PROPERTY(QStringList audioCaptureDevices READ audioCaptureDevices NOTIFY
                  devicesChanged)
   Q_PROPERTY(QStringList videoDevices READ videoDevices NOTIFY devicesChanged)
+  Q_PROPERTY(QStringList audioCodecs READ audioCodecs NOTIFY devicesChanged)
   Q_PROPERTY(QStringList videoCodecs READ videoCodecs NOTIFY devicesChanged)
   Q_PROPERTY(float speakerVolume READ speakerVolume WRITE setSpeakerVolume
                  NOTIFY volumeChanged)
@@ -60,6 +61,7 @@ private:
   explicit HardwareService(QObject *parent = nullptr);
   pj::Endpoint *m_endpoint;
   pj::VideoPreview *m_videoPreview;
+  bool m_echoCancellation = true; // pjsua enables EC by default
   QStringList m_audioPlaybackDevices;
   QStringList m_audioCaptureDevices;
   QList<int> m_playbackDeviceIndices;

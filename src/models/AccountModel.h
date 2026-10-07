@@ -2,6 +2,7 @@
 #define ACCOUNTMODEL_H
 
 #include <QAbstractListModel>
+#include <QHash>
 #include <QList>
 #include <QString>
 #include <QVariantMap>
@@ -64,7 +65,8 @@ public:
     EnableStunRole,
     IpVersionRole,
     RportRole,
-    ActiveRole
+    ActiveRole,
+    StatusRole
   };
 
   static AccountModel &instance();
@@ -88,6 +90,7 @@ signals:
 
 private:
   QList<Account> m_accounts;
+  QHash<QString, QString> m_status; // "user@domain" -> registration status
 };
 
 #endif // ACCOUNTMODEL_H

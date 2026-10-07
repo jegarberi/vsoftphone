@@ -35,6 +35,8 @@ public:
   Q_INVOKABLE void clearHistory();
 
 private:
+  void reload();
+
   QList<CallHistoryEntry> m_history;
 };
 

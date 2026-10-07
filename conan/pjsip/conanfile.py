@@ -80,9 +80,6 @@ class Pjsip(ConanFile):
             self.run("cat config.log")
             raise
 
-        # Always dump config.log for inspection if pjsip_config.log doesn't exist or to overwrite it
-        self.run("cp config.log /home/jon/antigravity_microsip/pjsip_config.log")
-        
         autotools.make(target="dep")
         autotools.make()
 

@@ -43,21 +43,18 @@ conan install . --build=missing
 Once dependencies are installed, use CMake to configure and build the project.
 
 ```bash
-# Create build directory
-mkdir -p build && cd build
-
-# Configure with CMake using the Conan toolchain
-cmake .. -DCMAKE_TOOLCHAIN_FILE=conan_toolchain.cmake -DCMAKE_BUILD_TYPE=Release
-
-# Build the project
-cmake --build . -j$(nproc)
+# Configure and build with the presets Conan generated
+cmake --preset conan-release
+cmake --build --preset conan-release -j$(nproc)
 ```
 
+`./build.sh` runs steps 2 and 3 in one go (it expects Conan in `.venv`).
+
 ### 4. Run
-After a successful build, the executable will be located in the `build` directory.
+The executable is `build/Release/microsip_clone`. Run it through the wrapper, which sets up the Conan runtime environment:
 
 ```bash
-./microsip_clone
+./run_microsip.sh
 ```
 
 ## Troubleshooting

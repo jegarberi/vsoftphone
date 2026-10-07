@@ -10,48 +10,75 @@ MyCall::MyCall(Account &acc, int call_id) : Call(acc, call_id) {}
 
 MyCall::~MyCall() {}
 
+// PJSIP invokes these on its worker thread. Capture what we need here and hop
+// to the GUI thread before touching CallService state or any model.
 void MyCall::onCallState(pj::OnCallStateParam &prm) {
   CallInfo ci = getInfo();
   qDebug() << "*** Call State:" << ci.stateText.c_str();
 
-  // Explicitly emit signals from CallService instance
-  CallService::instance().callStateChanged(
-      getId(), QString::fromStdString(ci.stateText), ci.lastStatusCode,
-      QString::fromStdString(ci.lastReason));
+  const int id = getId();
+  const bool disconnected = ci.state == PJSIP_INV_STATE_DISCONNECTED;
+  // pjsip spells this state "DISCONNCTD"; the UI matches on "DISCONNECTED"
+  const QString state =
+      disconnected ? "DISCONNECTED" : QString::fromStdString(ci.stateText);
+  const int status = ci.lastStatusCode;
+  const QString reason = QString::fromStdString(ci.lastReason);
+  const QString remoteUri = QString::fromStdString(ci.remoteUri);
+  const QString direction =
+      (ci.role == PJSIP_ROLE_UAC) ? "Outgoing" : "Incoming";
+  const int duration = ci.totalDuration.sec;
 
-  if (ci.state == PJSIP_INV_STATE_DISCONNECTED) {
-    QString direction = (ci.role == PJSIP_ROLE_UAC) ? "Outgoing" : "Incoming";
-    StorageService::instance().addCall(QString::fromStdString(ci.remoteUri),
-                                       direction, ci.totalDuration.sec);
-    CallService::instance().removeCall(getId());
-  }
+  QMetaObject::invokeMethod(
+      &CallService::instance(),
+      [=] {
+        CallService &svc = CallService::instance();
+        emit svc.callStateChanged(id, state, status, reason);
+        if (disconnected) {
+          StorageService::instance().addCall(remoteUri, direction, duration);
+          svc.removeCall(id);
+        }
+      },
+      Qt::QueuedConnection);
 }
 
 void MyCall::onCallMediaState(pj::OnCallMediaStateParam &prm) {
-  CallInfo ci = getInfo();
-  bool hasVideo = false;
+  const int id = getId();
+  QMetaObject::invokeMethod(
+      &CallService::instance(),
+      [id] { CallService::instance().handleMediaState(id); },
+      Qt::QueuedConnection);
+}
 
-  for (unsigned i = 0; i < ci.media.size(); i++) {
-    if (ci.media[i].type == PJMEDIA_TYPE_AUDIO && getMedia(i)) {
-      AudioMedia *aud_med = (AudioMedia *)getMedia(i);
-      try {
-        Endpoint::instance()
-            .audDevManager()
-            .getPlaybackDevMedia()
-            .startTransmit(*aud_med);
-        aud_med->startTransmit(
-            Endpoint::instance().audDevManager().getCaptureDevMedia());
-      } catch (Error &err) {
-        qWarning() << "Error connecting audio:"
-                   << QString::fromStdString(err.info());
+// Wires the call's audio to the sound device (honouring mute) and reports
+// video state. Runs on the GUI thread.
+void CallService::handleMediaState(int callId) {
+  auto call = m_activeCalls.value(callId);
+  if (!call)
+    return;
+
+  bool hasVideo = false;
+  try {
+    CallInfo ci = call->getInfo();
+    AudDevManager &adm = Endpoint::instance().audDevManager();
+    for (unsigned i = 0; i < ci.media.size(); i++) {
+      if (ci.media[i].type == PJMEDIA_TYPE_AUDIO && call->getMedia(i)) {
+        AudioMedia *aud_med = (AudioMedia *)call->getMedia(i);
+        aud_med->startTransmit(adm.getPlaybackDevMedia());
+        if (m_mutedCalls.contains(callId))
+          adm.getCaptureDevMedia().stopTransmit(*aud_med);
+        else
+          adm.getCaptureDevMedia().startTransmit(*aud_med);
+      } else if (ci.media[i].type == PJMEDIA_TYPE_VIDEO &&
+                 ci.media[i].status == PJSUA_CALL_MEDIA_ACTIVE) {
+        hasVideo = true;
       }
-    } else if (ci.media[i].type == PJMEDIA_TYPE_VIDEO &&
-               ci.media[i].status == PJSUA_CALL_MEDIA_ACTIVE) {
-      hasVideo = true;
     }
+  } catch (Error &err) {
+    qWarning() << "Error connecting audio:"
+               << QString::fromStdString(err.info());
   }
 
-  CallService::instance().callMediaStateChanged(getId(), hasVideo);
+  emit callMediaStateChanged(callId, hasVideo);
 }
 
 CallService &CallService::instance() {
@@ -164,11 +191,17 @@ void CallService::addCall(std::shared_ptr<MyCall> call) {
 
 void CallService::removeCall(int callId) {
   m_activeCalls.remove(callId);
+  m_conferenceParticipants.remove(callId);
+  m_mutedCalls.remove(callId);
   CallModel::instance().removeCall(callId);
 }
 
 void CallService::toggleMute(int callId) {
-  // Mute implementation
+  if (!m_activeCalls.contains(callId))
+    return;
+  if (!m_mutedCalls.remove(callId))
+    m_mutedCalls.insert(callId);
+  handleMediaState(callId);
 }
 
 void CallService::holdCall(int callId) {
@@ -187,8 +220,8 @@ void CallService::resumeCall(int callId) {
   if (m_activeCalls.contains(callId)) {
     try {
       CallOpParam prm(true);
-      m_activeCalls[callId]->reinvite(prm); // Reinvite is often used to resume
-      // Or setHold(prm) with false if supported in this version's prm
+      prm.opt.flag |= PJSUA_CALL_UNHOLD;
+      m_activeCalls[callId]->reinvite(prm);
       CallModel::instance().updateCallHold(callId, false);
     } catch (Error &err) {
       qWarning() << "Error resuming call:"

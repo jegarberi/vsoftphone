@@ -1,6 +1,7 @@
 #ifndef CALLSERVICE_H
 #define CALLSERVICE_H
 
+#include <QMap>
 #include <QObject>
 #include <QSet>
 #include <QVariantMap>
@@ -38,6 +39,7 @@ public:
 
   void addCall(std::shared_ptr<MyCall> call);
   void removeCall(int callId);
+  void handleMediaState(int callId);
 
   int lastCallId() const { return m_lastCallId; }
   QString lastRemoteUri() const { return m_lastRemoteUri; }
@@ -55,6 +57,7 @@ private:
 
   QMap<int, std::shared_ptr<MyCall>> m_activeCalls;
   QSet<int> m_conferenceParticipants;
+  QSet<int> m_mutedCalls;
   int m_lastCallId = -1;
   QString m_lastRemoteUri;
 };

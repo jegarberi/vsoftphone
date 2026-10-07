@@ -86,6 +86,9 @@ public:
                   const QString &content);
   QList<MessageRecord> getMessages(const QString &remoteParty);
 
+signals:
+  void callHistoryChanged();
+
 private:
   explicit StorageService(QObject *parent = nullptr);
   ~StorageService();

@@ -88,7 +88,7 @@ Item {
         id: typingTimer
         interval: 3000
         onTriggered: {
-            sipService.sendTypingIndication("", remoteParty, false)
+            sipService.sendTypingIndication(accountModel.defaultAccountId, remoteParty, false)
         }
     }
 
@@ -97,7 +97,7 @@ Item {
         function onTextChanged() {
             if (messageInput.text.length > 0) {
                 if (!typingTimer.running) {
-                    sipService.sendTypingIndication("", remoteParty, true)
+                    sipService.sendTypingIndication(accountModel.defaultAccountId, remoteParty, true)
                 }
                 typingTimer.restart()
             }

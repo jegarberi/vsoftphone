@@ -8,10 +8,6 @@ Item {
 
     signal dialRequested(string number)
 
-    ContactsModel {
-        id: contactsModel
-    }
-
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: 10
@@ -48,7 +44,7 @@ Item {
                         text: "Message"
                         onClicked: {
                             var component = Qt.createComponent("MessageWindow.qml")
-                            var win = component.createObject(null, {
+                            var win = component.createObject(root, {
                                 "remoteParty": model.number
                             })
                             win.show()

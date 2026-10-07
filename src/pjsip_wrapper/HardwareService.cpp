@@ -199,13 +199,8 @@ void HardwareService::startVideoPreview(int devIdx) {
         if (!chosen)
           chosen = &devInfo.fmt[0];
 
-        MediaFormatVideo *v_fmt = static_cast<MediaFormatVideo *>(&prm.format);
-        v_fmt->id = chosen->id;
-        v_fmt->type = PJMEDIA_TYPE_VIDEO;
-        v_fmt->width = chosen->width;
-        v_fmt->height = chosen->height;
-        v_fmt->fpsNum = chosen->fpsNum;
-        v_fmt->fpsDenum = chosen->fpsDenum;
+        prm.format.id = chosen->id;
+        prm.format.type = PJMEDIA_TYPE_VIDEO;
       }
     } catch (...) {
       // Fallback or ignore
@@ -278,24 +273,14 @@ void HardwareService::setMicVolume(float volume) {
   }
 }
 
-bool HardwareService::echoCancellation() const {
-  if (!m_endpoint)
-    return false;
-  try {
-    // In PJSUA2, EC options might be complex, but let's check basic state
-    // For now returning true if it's enabled in any way.
-    // Usually we set it, but getting exact state might require C API.
-    return true; // Placeholder
-  } catch (...) {
-    return false;
-  }
-}
+bool HardwareService::echoCancellation() const { return m_echoCancellation; }
 
 void HardwareService::setEchoCancellation(bool enabled) {
   if (!m_endpoint)
     return;
   try {
     m_endpoint->audDevManager().setEcOptions(enabled ? 200 : 0, 0);
+    m_echoCancellation = enabled;
     emit echoCancellationChanged();
   } catch (...) {
   }

@@ -17,6 +17,8 @@ public:
   MyAccount() {}
   ~MyAccount() {}
 
+  QString key; // "user@domain", the id used by SipService and the models
+
   virtual void onRegState(pj::OnRegStateParam &prm) override;
   virtual void onIncomingCall(pj::OnIncomingCallParam &prm) override;
   virtual void onInstantMessage(pj::OnInstantMessageParam &prm) override;
@@ -38,7 +40,7 @@ public:
 
   void sendMessage(const QString &accountId, const QString &destination,
                    const QString &content);
-  void sendTypingIndication(const QString &accountId,
+  Q_INVOKABLE void sendTypingIndication(const QString &accountId,
                             const QString &destination, bool isTyping);
 
   std::shared_ptr<MyAccount> getAccount(const QString &id) {
@@ -69,8 +71,9 @@ private:
   SipService &operator=(const SipService &) = delete;
 
   pj::Endpoint *m_endpoint;
-  pj::TransportId m_udpTransportId;
-  pj::TransportId m_tcpTransportId;
+  pj::TransportId m_udpTransportId = PJSUA_INVALID_ID;
+  pj::TransportId m_tcpTransportId = PJSUA_INVALID_ID;
+  pj::TransportId m_tlsTransportId = PJSUA_INVALID_ID;
   QMap<QString, std::shared_ptr<MyAccount>> m_accounts;
 };
 

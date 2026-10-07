@@ -3,6 +3,7 @@ import QtQuick.Controls
 
 ApplicationWindow {
     id: root
+    onClosing: destroy()
     width: 400
     height: 500
     visible: true

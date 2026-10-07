@@ -5,6 +5,11 @@ import Qt5Compat.GraphicalEffects
 
 ApplicationWindow {
     id: inCallWindow
+    onClosing: {
+        if (callState !== "DISCONNECTED")
+            callService.hangupCall(callId)
+        destroy()
+    }
     width: 480
     height: 720
     title: "Call - " + remoteUri
@@ -14,6 +19,7 @@ ApplicationWindow {
     property int callId
     property string remoteUri
     property string callState
+    property bool isIncoming: false
     property bool hasVideo: false
     property bool isHeld: false
     property bool isInConference: false
@@ -163,7 +169,7 @@ ApplicationWindow {
                     Text {
                         text: {
                             if (callState === "CALLING") return "Calling..."
-                            if (callState === "INCOMING") return "Incoming Call"
+                            if (callState === "INCOMING" || (isIncoming && callState === "EARLY")) return "Incoming Call"
                             if (callState === "CONFIRMED") return formatDuration(callDuration)
                             if (callState === "DISCONNECTED" && lastStatus >= 400) return "Error: " + lastStatus + " " + lastReason
                             return callState
@@ -209,6 +215,15 @@ ApplicationWindow {
                         Layout.alignment: Qt.AlignHCenter
                         spacing: Theme.spacing6
                         
+                        // Answer (incoming, not yet answered)
+                        ControlButton {
+                            icon: "📞"
+                            label: "Answer"
+                            active: true
+                            visible: isIncoming && (callState === "INCOMING" || callState === "EARLY")
+                            onClicked: callService.answerCall(callId)
+                        }
+
                         // Mute
                         ControlButton {
                             icon: isMuted ? "🔇" : "🎤"

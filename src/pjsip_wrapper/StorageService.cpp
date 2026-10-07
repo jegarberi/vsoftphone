@@ -127,6 +127,7 @@ void StorageService::addCall(const QString &remoteParty,
   if (!query.exec()) {
     qWarning() << "Error adding call history:" << query.lastError().text();
   }
+  emit callHistoryChanged();
 }
 
 QList<CallRecord> StorageService::getCallHistory() {

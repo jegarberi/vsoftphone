@@ -1,5 +1,7 @@
 #include "MessageModel.h"
+#include "../pjsip_wrapper/SipService.h"
 #include "../pjsip_wrapper/StorageService.h"
+#include "AccountModel.h"
 #include <QDebug>
 
 MessageModel::MessageModel(QObject *parent) : QAbstractListModel(parent) {}
@@ -69,12 +71,8 @@ void MessageModel::sendMessage(const QString &content) {
   if (m_currentRemoteParty.isEmpty() || content.isEmpty())
     return;
 
-  // We need to tell SipService to send it
-  // SipService::instance().sendMessage(currentAccountId, m_currentRemoteParty,
-  // content);
-
-  // For now, let's just log it in DB and refresh
-  StorageService::instance().addMessage(m_currentRemoteParty, "Outgoing",
-                                        content);
+  // SipService stores the message once it has been handed to the stack
+  SipService::instance().sendMessage(AccountModel::instance().defaultAccountId(),
+                                     m_currentRemoteParty, content);
   loadMessages();
 }

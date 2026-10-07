@@ -31,16 +31,17 @@ ApplicationWindow {
         target: callService
         function onIncomingCall(callId, remoteUri) {
             var component = Qt.createComponent("InCallWindow.qml")
-            var win = component.createObject(null, {
+            var win = component.createObject(root, {
                 "callId": callId,
                 "remoteUri": remoteUri,
-                "callState": "INCOMING"
+                "callState": "INCOMING",
+                "isIncoming": true
             })
             win.show()
         }
         function onOutgoingCall(callId, remoteUri) {
             var component = Qt.createComponent("InCallWindow.qml")
-            var win = component.createObject(null, {
+            var win = component.createObject(root, {
                 "callId": callId,
                 "remoteUri": remoteUri,
                 "callState": "CALLING"

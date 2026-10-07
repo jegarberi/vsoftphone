@@ -16,7 +16,7 @@ echo "=== Building Project ==="
 cmake --build --preset conan-release -j$(nproc)
 
 # Link compile_commands.json for IDE support
-ln -sf build/compile_commands.json .
+ln -sf build/Release/compile_commands.json .
 
 echo "=== Build Complete ==="
-echo "Run using: ./build/microsip_clone"
+echo "Run using: ./run_microsip.sh"

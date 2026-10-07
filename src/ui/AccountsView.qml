@@ -23,6 +23,10 @@ Item {
                 text: model.username + "@" + model.server
                 
                 contentItem: RowLayout {
+                    Label {
+                        text: (model.accountName || (model.username + "@" + model.domain))
+                              + (model.active && model.status ? " — " + model.status : "")
+                    }
                     Button {
                         text: model.active ? "Unregister" : "Register"
                         onClicked: accountModel.toggleActive(index)
