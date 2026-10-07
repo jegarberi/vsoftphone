@@ -10,6 +10,9 @@
 #include <QFile>
 #include <QNetworkInformation>
 #include <QSettings>
+#include <QSslCertificate>
+#include <QSslConfiguration>
+#include <QStandardPaths>
 #include <pjsua-lib/pjsua.h>
 #include <functional>
 #include <future>
@@ -228,6 +231,22 @@ void SipService::init() {
           if (QFile::exists(bundle)) {
             tls_cfg.tlsConfig.CaListFile = bundle;
             break;
+          }
+        }
+        // No bundle file (Windows, macOS): write out the system trust store,
+        // which Qt can read on every platform
+        if (tls_cfg.tlsConfig.CaListFile.empty()) {
+          QFile bundle(QStandardPaths::writableLocation(
+                           QStandardPaths::AppDataLocation) +
+                       "/ca-bundle.pem");
+          if (bundle.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            const auto certificates =
+                QSslConfiguration::systemCaCertificates();
+            for (const QSslCertificate &certificate : certificates)
+              bundle.write(certificate.toPem());
+            bundle.close();
+            tls_cfg.tlsConfig.CaListFile =
+                QFile::encodeName(bundle.fileName()).toStdString();
           }
         }
       }

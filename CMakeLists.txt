@@ -16,6 +16,10 @@ if(MICROSIP_PJSIP_PKGCONFIG)
     target_include_directories(pjsip::pjsip INTERFACE ${PJSIP_STATIC_INCLUDE_DIRS})
     target_compile_options(pjsip::pjsip INTERFACE ${PJSIP_STATIC_CFLAGS_OTHER})
     target_link_libraries(pjsip::pjsip INTERFACE ${PJSIP_STATIC_LDFLAGS})
+    if(WIN32)
+        # What the static OpenSSL needs and PJSIP's .pc file does not list
+        target_link_libraries(pjsip::pjsip INTERFACE crypt32 bcrypt advapi32 user32 gdi32 iphlpapi)
+    endif()
 else()
     find_package(pjsip REQUIRED)
 endif()
@@ -81,6 +85,11 @@ add_executable(microsip_clone
     src/resources.qrc
 )
 target_link_libraries(microsip_clone PRIVATE microsip_core)
+# No console window on Windows (spelled out: zig ignores -mwindows)
+set_target_properties(microsip_clone PROPERTIES WIN32_EXECUTABLE ON)
+if(WIN32)
+    target_link_options(microsip_clone PRIVATE -Wl,--subsystem,windows)
+endif()
 
 # Loopback test: the endpoint calls and messages itself, no SIP server needed,
 # then every QML window is loaded against the populated models

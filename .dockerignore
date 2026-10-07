@@ -9,3 +9,6 @@ pjsip_debug.txt
 build_log.txt
 *_ldd.txt
 build-static
+build-cache
+build-windows
+build-macos

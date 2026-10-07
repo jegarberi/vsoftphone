@@ -1,7 +1,7 @@
 # Microsip Clone
 
-A SIP softphone built with C++17, Qt 6 / QML and PJSIP. Built and tested on
-Linux.
+A SIP softphone built with C++17, Qt 6 / QML and PJSIP. Developed and tested
+on Linux, with a cross-compiled Windows build.
 
 ## Features
 
@@ -29,7 +29,9 @@ Linux.
 - "IPv6 only" accounts use IPv6 signalling over UDP only
 - Busy lamp fields are verified against sample NOTIFY bodies, not against a
   BroadWorks server
-- No in-call file transfer; no Windows, macOS, Android or iOS builds
+- Windows is cross-compiled and tested under wine only; the macOS build
+  target exists but has never been built
+- No in-call file transfer; no Android or iOS builds
 
 ## Building
 

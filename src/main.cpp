@@ -3,8 +3,12 @@
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QStandardPaths>
+#ifdef Q_OS_WIN
+#include <windows.h>
+#else
 #include <fcntl.h>
 #include <sys/file.h>
+#endif
 
 #include "QmlSetup.h"
 #include "pjsip_wrapper/SipService.h"
@@ -25,10 +29,17 @@ int main(int argc, char *argv[]) {
       QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
   QDir().mkpath(dataDir);
   // Held until the process ends, however it ends, so it can never go stale
+#ifdef Q_OS_WIN
+  ::CreateMutexW(nullptr, TRUE, L"Local\\AntigravityMicrosipClone");
+  const bool alreadyRunning = ::GetLastError() == ERROR_ALREADY_EXISTS;
+#else
   const int lockFd =
       ::open(QFile::encodeName(dataDir + "/instance.lock").constData(),
              O_RDWR | O_CREAT | O_CLOEXEC, 0600);
-  if (lockFd < 0 || ::flock(lockFd, LOCK_EX | LOCK_NB) != 0) {
+  const bool alreadyRunning =
+      lockFd < 0 || ::flock(lockFd, LOCK_EX | LOCK_NB) != 0;
+#endif
+  if (alreadyRunning) {
     qCritical("MicrosipClone is already running");
     return 1;
   }

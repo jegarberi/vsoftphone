@@ -11,3 +11,6 @@ build_log.txt
 *_ldd.txt
 3rdparty/
 build-static/
+build-cache/
+build-windows/
+build-macos/

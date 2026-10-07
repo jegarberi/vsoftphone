@@ -67,36 +67,43 @@ MICROSIP_TEST_TURN_PASS=pass build/Release/call_flow_test
 `make help` lists the targets; `make build`, `make test`, `make run` and
 `make docker` wrap the steps above.
 
-## Portable build
+## Portable and cross builds
 
 ```bash
-make static        # build-static/dist, for glibc 2.35 and newer
-make static-check  # prints the newest glibc version the binaries need
-make static-test   # runs the call test from dist/ in an Ubuntu 22.04 container
+make static        # Linux:   build-static/dist, for glibc 2.35 and newer
+make windows       # Windows: build-windows/dist, x86_64
+make macos MACOS_SDK=/path/to/MacOSX.sdk   # macOS: build-macos/dist
+
+make static-check  # newest glibc version the Linux binaries need
+make static-test   # runs the call test from the Linux folder in Ubuntu 22.04
+make windows-test  # runs the call test from the Windows folder under wine
 ```
 
-`make static` compiles everything with [zig](https://ziglang.org) targeting an
-older glibc (`GLIBC=2.35` by default; `make static GLIBC=2.31` for older) and
-links PJSIP, OpenSSL, Opus and the C++ runtime statically. zig and the Qt
-downloader are installed into `.venv` if they are not already available.
+All three compile everything with [zig](https://ziglang.org) and link PJSIP,
+OpenSSL, Opus and the C++ runtime statically. Qt comes from the official Qt
+binaries for the target platform and is shipped next to the executable, so
+each build produces a folder to copy to the target machine, not a single
+file. zig and the Qt downloader are installed into `.venv` when missing;
+downloads are kept in `build-cache/` and shared between the builds.
 
-Three things stay dynamic, because they cannot sensibly be static:
+Per platform:
 
-- glibc, at the chosen version or newer
-- ALSA (`libasound.so.2`), which loads the sound server's plugins at run time
-- Qt, taken from the official Qt binaries and shipped in `dist/` next to the
-  executable
+- **Linux**: targets an older glibc (`GLIBC=2.35` by default; pass
+  `GLIBC=2.31` for older). glibc and ALSA (`libasound.so.2`, which loads the
+  sound server's plugins) stay dynamic. The target needs the usual desktop
+  libraries Qt depends on (OpenGL, fontconfig, xkbcommon, D-Bus). The host
+  needs the ALSA, OpenGL and xkbcommon development headers; only those are
+  exposed to the compiler, so the system's own glibc headers never get in.
+- **Windows**: uses Qt's `llvm-mingw` kit, which is built with the same C++
+  runtime zig uses. Run `dist\microsip_clone.exe`.
+- **macOS**: zig does not include Apple's frameworks, so this needs a
+  `MacOSX.sdk` from a Mac with Xcode. `MACOS_ARCH` (`aarch64` or `x86_64`)
+  and `MACOS_MIN` select the target. **This target has not been run**: there
+  was no SDK to build against.
 
-So the result is a folder, not a single file. Copy `build-static/dist` to the
-target machine and run `dist/microsip_clone`. The target needs the usual
-desktop libraries Qt depends on (OpenGL, fontconfig, xkbcommon, D-Bus).
-
-The portable build has no video and no keyring support: SDL, V4L2, the video
-codecs and libsecret would each need to be built the same way. The video
-controls are hidden in that build.
-
-The host needs the ALSA, OpenGL and xkbcommon development headers; only those
-are exposed to the compiler, so the system's own glibc headers never get in.
+These builds have no video and no keyring support: SDL, the capture
+backends, the video codecs and libsecret would each need to be built the
+same way. The video controls are hidden in them.
 
 ## Docker
 
