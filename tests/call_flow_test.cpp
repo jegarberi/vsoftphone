@@ -199,6 +199,7 @@ static pj_bool_t blfServerOnRxRequest(pjsip_rx_data *rdata) {
 // proxy of the failover account) get 503 while primaryProxyDown is set; the
 // same socket also answers as "127.0.0.2", its second proxy.
 static bool primaryProxyDown = false;
+static std::string registerUserAgent; // of the last REGISTER seen
 
 static pj_bool_t registrarOnRxRequest(pjsip_rx_data *rdata) {
   pjsip_msg *msg = rdata->msg_info.msg;
@@ -206,6 +207,12 @@ static pj_bool_t registrarOnRxRequest(pjsip_rx_data *rdata) {
   const bool isOptions = msg->line.req.method.id == PJSIP_OPTIONS_METHOD;
   if (!isRegister && !isOptions)
     return PJ_FALSE;
+  if (isRegister) {
+    const pj_str_t name = pj_str((char *)"User-Agent");
+    auto *ua = static_cast<pjsip_generic_string_hdr *>(
+        pjsip_msg_find_hdr_by_name(msg, &name, nullptr));
+    registerUserAgent = ua ? std::string(ua->hvalue.ptr, ua->hvalue.slen) : "";
+  }
 
   // A REGISTER names its proxy in the Route header; the OPTIONS probe is
   // addressed to the proxy itself
@@ -331,6 +338,8 @@ int main(int argc, char *argv[]) {
 
   CHECK(StorageService::instance().init());
   SipService &sip = SipService::instance();
+  // A line break in the user agent must not become a header of its own
+  sip.setUserAgent("TestPhone/1.0\r\nX-Injected: 1");
   sip.init();
   CHECK(sip.endpoint());
   sip.endpoint()->audDevManager().setNullDev();
@@ -361,6 +370,7 @@ int main(int argc, char *argv[]) {
         .toString();
   };
   CHECK(waitFor([&] { return statusOf(0) == "Registered"; }));
+  CHECK(registerUserAgent == "TestPhone/1.0 X-Injected: 1");
 
   // --- outbound proxy failover ----------------------------------------------
   {

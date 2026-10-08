@@ -39,6 +39,11 @@ class SipService : public QObject {
   Q_PROPERTY(bool tlsVerify READ tlsVerify WRITE setTlsVerify NOTIFY
                  callHandlingChanged)
 
+  // Sent as the User-Agent header. Read when the SIP stack starts, so a
+  // change needs a restart too. Empty goes back to the default.
+  Q_PROPERTY(QString userAgent READ userAgent WRITE setUserAgent NOTIFY
+                 callHandlingChanged)
+
   // Network settings shared by all accounts. STUN and TURN are the defaults
   // for accounts that name no server of their own. Changes reach the accounts
   // through applyNetworkSettings().
@@ -90,6 +95,8 @@ public:
   void setAutoAnswer(bool enabled);
   bool tlsVerify() const;
   void setTlsVerify(bool enabled);
+  QString userAgent() const;
+  void setUserAgent(const QString &agent);
 
   bool stunEnabled() const { return net("stunEnabled", true).toBool(); }
   void setStunEnabled(bool v) { setNet("stunEnabled", v, true); }

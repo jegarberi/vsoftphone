@@ -297,6 +297,22 @@ void SipService::setTlsVerify(bool enabled) {
   emit callHandlingChanged();
 }
 
+QString SipService::userAgent() const {
+  return QSettings().value("sip/userAgent", "MicroSIP/3.21.3").toString();
+}
+
+void SipService::setUserAgent(const QString &agent) {
+  // simplified() also drops line breaks, which would start a new header
+  const QString clean = agent.simplified();
+  if (clean == userAgent())
+    return;
+  if (clean.isEmpty())
+    QSettings().remove("sip/userAgent");
+  else
+    QSettings().setValue("sip/userAgent", clean);
+  emit callHandlingChanged();
+}
+
 // Runs `fn` on the PJSIP worker thread and waits for it.
 //
 // Deleting an account takes PJSIP's global lock and then the lock of each
@@ -343,7 +359,7 @@ void SipService::init() {
     ep_cfg.uaConfig.natTypeInSdp = 1;
 
     // Mimic MicroSIP User Agent to ensure compatibility with strict PBX rules
-    ep_cfg.uaConfig.userAgent = "MicroSIP/3.21.3";
+    ep_cfg.uaConfig.userAgent = userAgent().toStdString();
 
     // Disable automatic switching from UDP to TCP
     pjsip_cfg()->endpt.disable_tcp_switch = PJ_TRUE;

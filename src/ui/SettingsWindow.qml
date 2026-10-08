@@ -38,6 +38,7 @@ ApplicationWindow {
         sipService.doNotDisturb = dndCheck.checked
         sipService.autoAnswer = autoAnswerCheck.checked
         sipService.tlsVerify = tlsVerifyCheck.checked
+        sipService.userAgent = userAgentField.text
         sipService.acceptIpCalls = acceptIpCheck.checked
         presenceService.status = presenceCombo.currentText
 
@@ -368,8 +369,14 @@ ApplicationWindow {
                 text: "Verify TLS server certificates"
                 checked: sipService.tlsVerify
             }
+            TextField {
+                id: userAgentField
+                Layout.fillWidth: true
+                placeholderText: "User agent"
+                text: sipService.userAgent
+            }
             Hint {
-                text: "Certificate checking takes effect the next time the app starts."
+                text: "The user agent is the name this phone gives to servers; leave it empty for the default. It and certificate checking take effect the next time the app starts."
                 Layout.bottomMargin: 12
             }
         }
