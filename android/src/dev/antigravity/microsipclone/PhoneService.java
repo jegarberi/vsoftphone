@@ -7,6 +7,7 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.media.AudioManager;
 import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.IBinder;
@@ -47,6 +48,13 @@ public class PhoneService extends Service {
             .setFullScreenIntent(openApp(context), true)
             .setAutoCancel(true)
             .build());
+    }
+
+    // The loudspeaker rather than the earpiece, for the audio test
+    public static void loudspeaker(Context context, boolean on) {
+        AudioManager audio = (AudioManager) context.getSystemService(AUDIO_SERVICE);
+        audio.setMode(on ? AudioManager.MODE_IN_COMMUNICATION : AudioManager.MODE_NORMAL);
+        audio.setSpeakerphoneOn(on);
     }
 
     public static void callsOver(Context context) {

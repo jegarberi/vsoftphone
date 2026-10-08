@@ -67,6 +67,7 @@ ApplicationWindow {
     onClosing: {
         Theme.loadSettings()
         hardwareService.stopVideoPreview()
+        hardwareService.stopAudioTest()
         hardwareService.restoreSettings()
         hardwareService.speakerVolume = initialSpeakerVolume
         hardwareService.micVolume = initialMicVolume

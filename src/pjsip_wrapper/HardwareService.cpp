@@ -2,6 +2,10 @@
 #include "SipService.h"
 #include <QDebug>
 #include <QSettings>
+#ifdef Q_OS_ANDROID
+#include <QCoreApplication>
+#include <QJniObject>
+#endif
 #include <pjsua2/endpoint.hpp>
 #include <pjsua2/media.hpp>
 #include <pjsua-lib/pjsua.h>
@@ -284,6 +288,19 @@ void HardwareService::setCodecEnabled(const QString &codecId, bool enabled) {
   }
 }
 
+// Android plays call audio through the earpiece, where a test held at
+// arm's length is not heard: the test uses the loudspeaker
+static void useLoudspeaker(bool on) {
+#ifdef Q_OS_ANDROID
+  QJniObject::callStaticMethod<void>(
+      "dev/antigravity/microsipclone/PhoneService", "loudspeaker",
+      "(Landroid/content/Context;Z)V",
+      QNativeInterface::QAndroidApplication::context(), jboolean(on));
+#else
+  Q_UNUSED(on);
+#endif
+}
+
 void HardwareService::startAudioTest(int captureIdx, int playbackIdx) {
   if (!m_endpoint)
     return;
@@ -295,6 +312,7 @@ void HardwareService::startAudioTest(int captureIdx, int playbackIdx) {
     AudioMedia &capMedia = m_endpoint->audDevManager().getCaptureDevMedia();
     AudioMedia &playMedia = m_endpoint->audDevManager().getPlaybackDevMedia();
     capMedia.startTransmit(playMedia);
+    useLoudspeaker(true);
     qDebug() << "Started audio loopback test on capture=" << captureIdx
              << "playback=" << playbackIdx;
   } catch (Error &err) {
@@ -310,6 +328,7 @@ void HardwareService::stopAudioTest() {
     AudioMedia &capMedia = m_endpoint->audDevManager().getCaptureDevMedia();
     AudioMedia &playMedia = m_endpoint->audDevManager().getPlaybackDevMedia();
     capMedia.stopTransmit(playMedia);
+    useLoudspeaker(false);
     qDebug() << "Stopped audio loopback test";
   } catch (...) {
   }
