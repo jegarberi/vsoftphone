@@ -359,12 +359,31 @@ void CallService::setRinging(int callId, bool ringing) {
   }
 }
 
+// A re-INVITE that keeps the call's audio and video lines and sets which way
+// they flow
+CallOpParam CallService::mediaDirection(int callId, pjmedia_dir dir) {
+  CallOpParam prm(true);
+  prm.opt.textCount = 0; // no real-time text line; PJSIP offers one by default
+  const CallInfo ci = m_activeCalls[callId]->getInfo();
+  prm.opt.audioCount = prm.opt.videoCount = 0;
+  for (const CallMediaInfo &media : ci.media) {
+    if (media.type == PJMEDIA_TYPE_AUDIO)
+      ++prm.opt.audioCount;
+    else if (media.type == PJMEDIA_TYPE_VIDEO &&
+             media.status != PJSUA_CALL_MEDIA_NONE)
+      ++prm.opt.videoCount;
+  }
+  prm.opt.flag |= PJSUA_CALL_SET_MEDIA_DIR;
+  prm.opt.mediaDir.assign(ci.media.size(), dir);
+  return prm;
+}
+
 void CallService::holdCall(int callId) {
   if (m_activeCalls.contains(callId)) {
     try {
-      CallOpParam prm(true);
-      prm.opt.textCount = 0; // no real-time text line; PJSIP offers one by default
-      m_activeCalls[callId]->setHold(prm);
+      // "inactive" rather than PJSIP's own hold ("sendonly"), which keeps
+      // sending silence for as long as the call is held
+      m_activeCalls[callId]->reinvite(mediaDirection(callId, PJMEDIA_DIR_NONE));
       m_heldCalls.insert(callId);
       CallModel::instance().updateCallHold(callId, true);
     } catch (Error &err) {
@@ -376,8 +395,8 @@ void CallService::holdCall(int callId) {
 void CallService::resumeCall(int callId) {
   if (m_activeCalls.contains(callId)) {
     try {
-      CallOpParam prm(true);
-      prm.opt.textCount = 0; // no real-time text line; PJSIP offers one by default
+      CallOpParam prm =
+          mediaDirection(callId, PJMEDIA_DIR_ENCODING_DECODING);
       prm.opt.flag |= PJSUA_CALL_UNHOLD;
       m_activeCalls[callId]->reinvite(prm);
       m_heldCalls.remove(callId);

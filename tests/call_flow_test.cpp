@@ -521,6 +521,29 @@ int main(int argc, char *argv[]) {
   CHECK(!micReaches(outgoing)); // mute survives the re-INVITE
   callService.toggleMute(outgoing);
   CHECK(waitFor([&] { return micReaches(outgoing); }));
+  // On hold, nothing from the microphone goes to the call
+  callService.holdCall(outgoing);
+  CHECK(waitFor([&] {
+    return mediaStatus(outgoing) == PJSUA_CALL_MEDIA_LOCAL_HOLD;
+  }));
+  CHECK(waitFor([&] { return !micReaches(outgoing); }));
+  // ... and no audio packets at all are sent: not even silence
+  {
+    const auto sent = [&] {
+      pjsua_stream_stat stat;
+      return pjsua_call_get_stream_stat(outgoing, 0, &stat) == PJ_SUCCESS
+                 ? int(stat.rtcp.tx.pkt)
+                 : 0;
+    };
+    const int before = sent();
+    pump(1000);
+    CHECK(sent() == before);
+  }
+  callService.resumeCall(outgoing);
+  CHECK(waitFor([&] {
+    return mediaStatus(outgoing) == PJSUA_CALL_MEDIA_ACTIVE;
+  }));
+  CHECK(waitFor([&] { return micReaches(outgoing); }));
 
   CHECK(callService.toggleRecording(outgoing));
   pump(500);

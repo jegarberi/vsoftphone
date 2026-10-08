@@ -78,6 +78,7 @@ private:
   ~CallService();
 
   QMap<int, std::shared_ptr<MyCall>> m_activeCalls;
+  pj::CallOpParam mediaDirection(int callId, pjmedia_dir dir);
   void *m_videoSurface = nullptr;
   // The video window that already draws on m_videoSurface, or -1
   int m_videoShownIn = -1;
