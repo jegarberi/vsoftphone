@@ -333,6 +333,17 @@ void SipService::setUserAgent(const QString &agent) {
   emit callHandlingChanged();
 }
 
+int SipService::logLevel() const {
+  return qBound(0, QSettings().value("sip/logLevel", 1).toInt(), 3);
+}
+
+void SipService::setLogLevel(int level) {
+  if (level == logLevel())
+    return;
+  QSettings().setValue("sip/logLevel", qBound(0, level, 3));
+  emit callHandlingChanged();
+}
+
 // Runs `fn` on the PJSIP worker thread and waits for it.
 //
 // Deleting an account takes PJSIP's global lock and then the lock of each
@@ -365,15 +376,15 @@ void SipService::init() {
     m_endpoint->libCreate();
 
     EpConfig ep_cfg;
-    // Full SIP traces contain Authorization headers, so they are opt-in:
-    // run with MICROSIP_SIP_TRACE=1 when debugging signalling.
-    // Android has no way to set that, so sip/trace=true in the settings
-    // file does the same.
-    const bool trace = qEnvironmentVariableIsSet("MICROSIP_SIP_TRACE") ||
-                       QSettings().value("sip/trace", false).toBool();
-    ep_cfg.logConfig.level = trace ? 5 : 3;
-    ep_cfg.logConfig.consoleLevel = trace ? 5 : 3;
-    ep_cfg.logConfig.msgLogging = trace;
+    // PJSIP's levels for the four choices in Settings. The last one also
+    // prints every SIP message, Authorization headers included, which is why
+    // it is not the default. MICROSIP_SIP_TRACE=1 forces it.
+    static const int levels[] = {1, 3, 4, 5};
+    const int verbosity =
+        qEnvironmentVariableIsSet("MICROSIP_SIP_TRACE") ? 3 : logLevel();
+    ep_cfg.logConfig.level = levels[verbosity];
+    ep_cfg.logConfig.consoleLevel = levels[verbosity];
+    ep_cfg.logConfig.msgLogging = verbosity == 3;
 #ifdef Q_OS_ANDROID
     // PJSIP writes its log to stdout, which Android throws away
     struct LogcatWriter : LogWriter {
@@ -435,12 +446,19 @@ void SipService::init() {
     HardwareService::instance().init(m_endpoint);
 
     TransportConfig t_cfg;
+#ifdef Q_OS_ANDROID
+    // Phones keep 5060 for the carrier's own calling (VoLTE, Wi-Fi calling):
+    // packets sent to it from the network never reach an app, so every
+    // request would time out
+    t_cfg.port = 5062;
+#else
     t_cfg.port = 5060;
+#endif
     try {
       m_udpTransportId =
           m_endpoint->transportCreate(PJSIP_TRANSPORT_UDP, t_cfg);
     } catch (Error &) {
-      qWarning() << "Port 5060 occupied, trying auto-assign...";
+      qWarning() << "Port" << t_cfg.port << "occupied, trying auto-assign...";
       t_cfg.port = 0;
       m_udpTransportId =
           m_endpoint->transportCreate(PJSIP_TRANSPORT_UDP, t_cfg);

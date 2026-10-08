@@ -75,11 +75,26 @@ Qt 6.4 supports, and 6.4 is the oldest Qt this app builds with. The first
 build downloads several gigabytes and accepts the Android SDK licence.
 
 The APK is signed with Android's debug key, so it installs for testing
-(`adb install build-android/microsip-clone-arm64-v8a.apk`); sign a release
-with your own key. **The APK has been built but never run**: there was no
-device or emulator to try it on, and the interface was designed for a
-desktop, with separate windows for calls and settings. Audio only, like the
-other cross builds.
+(`adb install -r build-android/microsip-clone-arm64-v8a.apk`); sign a release
+with your own key. The first build leaves that key in
+`build-android/debug.keystore` and later builds reuse it, so they install over
+the old one and keep its accounts.
+
+Tried on one phone (Android 14, 64-bit): it registers, and rings for a call
+while in the background. The interface was designed for a desktop, with
+separate windows for calls and settings. Audio only, like the other cross
+builds. What is different on Android, all in `android/`:
+
+- **It keeps running off screen.** A foreground service (the "Ready for
+  calls" notification) keeps the app registered after Back or Home, and an
+  incoming call shows as a notification that opens the app. Swiping the app
+  out of the recent apps ends it. This holds the CPU and Wi-Fi awake, which
+  costs battery, and a phone in deep sleep can still miss a call.
+- **SIP uses port 5062, not 5060.** Phones keep 5060 for the carrier's own
+  calling, and packets sent to it never reach an app. A direct call to the
+  phone's IP address needs `:5062`.
+- **The log goes to logcat**: `adb logcat -s MicrosipClone`, as detailed as
+  Settings → Log says.
 
 ## A SIP server to try it against
 

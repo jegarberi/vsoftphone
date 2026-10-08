@@ -4,6 +4,10 @@
 #include <QGuiApplication>
 #include <QSettings>
 #include <QStyleHints>
+#ifdef Q_OS_ANDROID
+#include <QCoreApplication>
+#include <QJniObject>
+#endif
 
 //   name               dark   background surface   foreground muted     accent     look
 static const Theme::Palette kPalettes[] = {
@@ -130,4 +134,11 @@ void Theme::saveSettings() {
   settings.setValue("ui/scale", m_uiScale);
   settings.setValue("ui/closeToTray", m_closeToTray);
   settings.remove("ui/darkMode");
+}
+
+void Theme::sendToBackground() {
+#ifdef Q_OS_ANDROID
+  QJniObject(QNativeInterface::QAndroidApplication::context())
+      .callMethod<jboolean>("moveTaskToBack", "(Z)Z", true);
+#endif
 }

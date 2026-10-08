@@ -29,7 +29,12 @@ ApplicationWindow {
     }
 
     onClosing: (close) => {
-        if (Theme.closeToTray && tray.available) {
+        if (Qt.platform.os === "android") {
+            // Back leaves the app running for incoming calls; swiping it
+            // out of the recent apps is what ends it
+            close.accepted = false
+            Theme.sendToBackground()
+        } else if (Theme.closeToTray && tray.available) {
             close.accepted = false
             hide()
         } else {

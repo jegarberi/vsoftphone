@@ -44,6 +44,11 @@ class SipService : public QObject {
   Q_PROPERTY(QString userAgent READ userAgent WRITE setUserAgent NOTIFY
                  callHandlingChanged)
 
+  // How much the SIP stack logs: 0 errors only, 1 normal, 2 detailed, 3
+  // everything with the SIP messages. Read at start too.
+  Q_PROPERTY(int logLevel READ logLevel WRITE setLogLevel NOTIFY
+                 callHandlingChanged)
+
   // Network settings shared by all accounts. STUN and TURN are the defaults
   // for accounts that name no server of their own. Changes reach the accounts
   // through applyNetworkSettings().
@@ -105,6 +110,8 @@ public:
   void setTlsVerify(bool enabled);
   QString userAgent() const;
   void setUserAgent(const QString &agent);
+  int logLevel() const;
+  void setLogLevel(int level);
 
   bool stunEnabled() const { return net("stunEnabled", true).toBool(); }
   void setStunEnabled(bool v) { setNet("stunEnabled", v, true); }

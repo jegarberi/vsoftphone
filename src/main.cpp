@@ -9,6 +9,7 @@
 #include <QWindow>
 #ifdef Q_OS_ANDROID
 #include <QJniEnvironment>
+#include <QJniObject>
 #include <QtCore/private/qandroidextras_p.h>
 // PJSIP's audio device talks to Android through Java and expects the VM here.
 // It normally learns it in JNI_OnLoad, which Android does not call for a
@@ -23,6 +24,7 @@ extern "C" JavaVM *pj_jni_jvm;
 #endif
 
 #include "QmlSetup.h"
+#include "pjsip_wrapper/CallService.h"
 #include "pjsip_wrapper/SipService.h"
 #include "pjsip_wrapper/StorageService.h"
 #include "ui/Theme.h"
@@ -81,6 +83,32 @@ int main(int argc, char *argv[]) {
   QtAndroidPrivate::requestPermission(
       QStringLiteral("android.permission.RECORD_AUDIO"))
       .waitForFinished();
+  // Android 13 asks before showing the call notifications below
+  QtAndroidPrivate::requestPermission(
+      QStringLiteral("android.permission.POST_NOTIFICATIONS"))
+      .waitForFinished();
+  // Keeps the app registered while it is not on screen, and announces the
+  // calls that arrive then (android/.../PhoneService.java)
+  const char *phoneService = "dev/antigravity/microsipclone/PhoneService";
+  const QJniObject context(QNativeInterface::QAndroidApplication::context());
+  QJniObject::callStaticMethod<void>(phoneService, "start",
+                                     "(Landroid/content/Context;)V",
+                                     context.object());
+  QObject::connect(&CallService::instance(), &CallService::incomingCall, &app,
+                   [=](int, const QString &from) {
+                     QJniObject::callStaticMethod<void>(
+                         phoneService, "incomingCall",
+                         "(Landroid/content/Context;Ljava/lang/String;)V",
+                         context.object(),
+                         QJniObject::fromString(from).object());
+                   });
+  QObject::connect(&CallService::instance(), &CallService::callStateChanged,
+                   &app, [=](int, const QString &state) {
+                     if (state == "CONFIRMED" || state == "DISCONNECTED")
+                       QJniObject::callStaticMethod<void>(
+                           phoneService, "callsOver",
+                           "(Landroid/content/Context;)V", context.object());
+                   });
 #endif
 
   // Initialize SipService and StorageService

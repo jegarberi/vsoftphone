@@ -83,6 +83,8 @@ public:
 
   Q_INVOKABLE void loadSettings();
   Q_INVOKABLE void saveSettings();
+  // Android: leaves the screen but keeps running, as the Home button does
+  Q_INVOKABLE void sendToBackground();
 
   // The saved zoom, readable before the application object exists
   static double savedUiScale();

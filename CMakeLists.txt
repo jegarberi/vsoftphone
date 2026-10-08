@@ -94,20 +94,12 @@ if(WIN32)
 endif()
 
 if(ANDROID)
-    # The microphone permission, asked for at run time, uses a private Qt API
+    # Permissions asked for at run time use a private Qt API
     # in Qt 6.4 (QPermission only arrives in 6.5)
     target_link_libraries(microsip_clone PRIVATE Qt6::CorePrivate)
-    # Qt's manifest plus the permissions a softphone needs
-    file(READ "${QT6_INSTALL_PREFIX}/src/android/templates/AndroidManifest.xml" manifest)
-    string(REPLACE "<!-- %%INSERT_PERMISSIONS -->"
-        "<uses-permission android:name=\"android.permission.RECORD_AUDIO\"/>\n    <uses-permission android:name=\"android.permission.MODIFY_AUDIO_SETTINGS\"/>\n    <!-- %%INSERT_PERMISSIONS -->"
-        manifest "${manifest}")
-    # Qt's template still carries its example package name
-    string(REPLACE "org.qtproject.example" "dev.antigravity.microsipclone"
-        manifest "${manifest}")
-    file(WRITE "${CMAKE_BINARY_DIR}/android-package/AndroidManifest.xml" "${manifest}")
+    # The manifest, launcher icon and background service are in android/
     set_target_properties(microsip_clone PROPERTIES
-        QT_ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_BINARY_DIR}/android-package"
+        QT_ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_SOURCE_DIR}/android"
         QT_ANDROID_MIN_SDK_VERSION 23
         QT_ANDROID_TARGET_SDK_VERSION 33)
     return() # the loopback test below is a desktop program

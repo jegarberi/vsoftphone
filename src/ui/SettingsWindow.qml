@@ -43,6 +43,7 @@ ApplicationWindow {
             autoAnswer: autoAnswerCheck.checked,
             tlsVerify: tlsVerifyCheck.checked,
             userAgent: userAgentField.text,
+            logLevel: logLevelCombo.currentIndex,
             acceptIpCalls: acceptIpCheck.checked,
             stunEnabled: stunCheck.checked,
             stunServer: stunField.text,
@@ -417,8 +418,18 @@ ApplicationWindow {
                 placeholderText: "User agent"
                 text: sipService.userAgent
             }
+            RowLayout {
+                Layout.fillWidth: true
+                Label { text: "Log" }
+                ComboBox {
+                    id: logLevelCombo
+                    Layout.fillWidth: true
+                    model: ["Errors only", "Normal", "Detailed", "Everything, with SIP messages"]
+                    currentIndex: sipService.logLevel
+                }
+            }
             Hint {
-                text: "The user agent is the name this phone gives to servers; leave it empty for the default. It and certificate checking take effect the next time the app starts."
+                text: "The user agent is the name this phone gives to servers; leave it empty for the default. The log goes to the terminal the app was started from (logcat on Android); with SIP messages it shows login hashes. These three take effect the next time the app starts."
                 Layout.bottomMargin: 12
             }
         }
