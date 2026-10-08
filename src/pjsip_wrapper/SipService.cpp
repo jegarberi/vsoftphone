@@ -56,22 +56,34 @@ SipService::SipService(QObject *parent)
           });
 }
 
-// The proxies an account may use, in order of preference
-static QStringList proxiesOf(const QVariantMap &config) {
-  QStringList proxies;
-  for (const char *key : {"proxy", "proxy2"}) {
-    const QString proxy = config[key].toString().trimmed();
-    if (!proxy.isEmpty())
-      proxies.append(proxy);
-  }
-  return proxies;
-}
-
 static QString transportParamOf(const QVariantMap &config) {
   const QString transport = config["transport"].toString().toLower();
   return (transport == "tcp" || transport == "tls" || transport == "udp")
              ? ";transport=" + transport
              : QString();
+}
+
+// The proxies an account may use, in order of preference, each as what
+// follows "sip:". A proxy is typed as a host ("10.0.0.5:5080") or as a SIP
+// URI ("<sip:10.0.0.5:5080;transport=tcp;lr>"); one that names no transport
+// uses the account's.
+static QStringList proxiesOf(const QVariantMap &config) {
+  QStringList proxies;
+  for (const char *key : {"proxy", "proxy2"}) {
+    QString proxy = config[key].toString().trimmed();
+    const int lt = proxy.indexOf('<');
+    if (lt >= 0)
+      proxy = proxy.mid(lt + 1).section('>', 0, 0).trimmed();
+    const bool sips = proxy.startsWith("sips:", Qt::CaseInsensitive);
+    if (sips || proxy.startsWith("sip:", Qt::CaseInsensitive))
+      proxy = proxy.mid(sips ? 5 : 4);
+    if (proxy.isEmpty())
+      continue;
+    if (!proxy.contains(";transport=", Qt::CaseInsensitive))
+      proxy += sips ? QString(";transport=tls") : transportParamOf(config);
+    proxies.append(proxy);
+  }
+  return proxies;
 }
 
 // A registration that failed because nothing answered, or the proxy said it
@@ -100,7 +112,7 @@ void SipService::recheckProxies() {
     if (m_proxyChoice.value(id) != 1 || !m_configs.contains(id))
       continue;
     const QVariantMap config = m_configs.value(id);
-    const QString first = proxiesOf(config).value(0) + transportParamOf(config);
+    const QString first = proxiesOf(config).value(0);
     probeProxy(id, first, [this, id](bool reachable) {
       if (!reachable || m_proxyChoice.value(id) != 1 || !m_configs.contains(id))
         return;
@@ -355,10 +367,22 @@ void SipService::init() {
     EpConfig ep_cfg;
     // Full SIP traces contain Authorization headers, so they are opt-in:
     // run with MICROSIP_SIP_TRACE=1 when debugging signalling.
-    const bool trace = qEnvironmentVariableIsSet("MICROSIP_SIP_TRACE");
+    // Android has no way to set that, so sip/trace=true in the settings
+    // file does the same.
+    const bool trace = qEnvironmentVariableIsSet("MICROSIP_SIP_TRACE") ||
+                       QSettings().value("sip/trace", false).toBool();
     ep_cfg.logConfig.level = trace ? 5 : 3;
     ep_cfg.logConfig.consoleLevel = trace ? 5 : 3;
     ep_cfg.logConfig.msgLogging = trace;
+#ifdef Q_OS_ANDROID
+    // PJSIP writes its log to stdout, which Android throws away
+    struct LogcatWriter : LogWriter {
+      void write(const LogEntry &entry) override {
+        qInfo().noquote() << QString::fromStdString(entry.msg).trimmed();
+      }
+    };
+    ep_cfg.logConfig.writer = new LogcatWriter; // the endpoint deletes it
+#endif
 
     // Set max calls before libInit
     ep_cfg.uaConfig.maxCalls = 4;
@@ -649,8 +673,7 @@ void SipService::applyAccount(const QString &id, const QVariantMap &config) {
     cfg.presConfig.publishEnabled = config["publishPresence"].toBool();
 
     if (!proxy.isEmpty()) {
-      cfg.sipConfig.proxies.push_back("sip:" + proxy.toStdString() +
-                                      transportParam);
+      cfg.sipConfig.proxies.push_back("sip:" + proxy.toStdString());
     }
 
     QString login = config["login"].toString();

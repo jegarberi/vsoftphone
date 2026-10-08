@@ -217,7 +217,7 @@ Item {
 
                 Heading { text: "SERVER" }
                 TextField { id: serverField; placeholderText: "SIP server, if different from the domain"; Layout.fillWidth: true }
-                TextField { id: proxyField; placeholderText: "Outbound proxy (optional)"; Layout.fillWidth: true }
+                TextField { id: proxyField; placeholderText: "Outbound proxy: host or sip: URI (optional)"; Layout.fillWidth: true }
                 TextField { id: proxy2Field; placeholderText: "Second proxy, used when the first fails"; Layout.fillWidth: true; visible: proxyField.text.trim() !== "" || text !== "" }
                 RowLayout {
                     Layout.fillWidth: true

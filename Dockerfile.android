@@ -117,7 +117,10 @@ RUN curl -fsSL -o pjsip.tar.gz https://github.com/pjsip/pjproject/archive/refs/t
 WORKDIR /app
 COPY . .
 # Some of Qt's Android kits arrive with their scripts not executable
-RUN chmod +x /opt/qt/android/bin/* \
+# and `make android` passes in the signing key of the first build, so that later
+# builds install over it
+RUN --mount=type=secret,id=debugkey,target=/root/.android/debug.keystore \
+    chmod +x /opt/qt/android/bin/* \
     && PKG_CONFIG_LIBDIR=/opt/pjsip/lib/pkgconfig /opt/qt/android/bin/qt-cmake -S . -B /build -G Ninja \
       -DCMAKE_BUILD_TYPE=Release \
       -DQT_HOST_PATH=/opt/qt/${QT_VERSION}/gcc_64 \
@@ -133,4 +136,4 @@ RUN cp /build/android-build/build/outputs/apk/debug/android-build-debug.apk /mic
     && ${ANDROID_SDK_ROOT}/build-tools/${BUILD_TOOLS}/aapt dump badging /microsip-clone-${ANDROID_ABI}.apk \
        | grep -E "^package|sdkVersion|native-code|uses-permission"
 
-CMD ["sh", "-c", "cp /microsip-clone-*.apk /out/ && ls -la /out"]
+CMD ["sh", "-c", "cp /microsip-clone-*.apk /out/ && (cp -n /root/.android/debug.keystore /out/ 2>/dev/null; ls -la /out)"]

@@ -392,7 +392,8 @@ int main(int argc, char *argv[]) {
                          {"domain", domain},          {"password", "secret"},
                          {"transport", "UDP"},        {"enableStun", false},
                          {"ipVersion", 0},
-                         {"proxy", "127.0.0.1:" + port},
+                         // One typed as a SIP URI, one as a plain host
+                         {"proxy", "<sip:127.0.0.1:" + port + ";lr>"},
                          {"proxy2", "127.0.0.2:" + port}});
     // The first proxy refuses, so the account registers through the second
     CHECK(waitFor([&] {

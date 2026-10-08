@@ -319,9 +319,10 @@ endif
 
 ANDROID_ABI ?= arm64-v8a
 
+comma := ,
 .PHONY: android
 android: ## Build an APK for Android 6.0 and newer into build-android/ (ANDROID_ABI=armeabi-v7a for old 32-bit phones)
-	docker build -f Dockerfile.android --build-arg ANDROID_ABI=$(ANDROID_ABI) -t microsip-android-$(ANDROID_ABI) .
+	docker build -f Dockerfile.android $(if $(wildcard build-android/debug.keystore),--secret id=debugkey$(comma)src=build-android/debug.keystore) --build-arg ANDROID_ABI=$(ANDROID_ABI) -t microsip-android-$(ANDROID_ABI) .
 	mkdir -p build-android
 	docker run --rm --user $$(id -u):$$(id -g) -v $(CURDIR)/build-android:/out microsip-android-$(ANDROID_ABI)
 
