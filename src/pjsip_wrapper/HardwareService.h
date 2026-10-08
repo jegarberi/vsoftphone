@@ -12,6 +12,10 @@ class HardwareService : public QObject {
                  devicesChanged)
   Q_PROPERTY(QStringList audioCaptureDevices READ audioCaptureDevices NOTIFY
                  devicesChanged)
+  // Android: what a call can be heard through (earpiece, loudspeaker,
+  // headset), the one in use first. Empty elsewhere, where Settings chooses.
+  Q_PROPERTY(QStringList audioOutputs READ audioOutputs NOTIFY
+                 audioOutputsChanged)
   Q_PROPERTY(QStringList videoDevices READ videoDevices NOTIFY devicesChanged)
   Q_PROPERTY(QStringList audioCodecs READ audioCodecs NOTIFY devicesChanged)
   Q_PROPERTY(QStringList videoCodecs READ videoCodecs NOTIFY devicesChanged)
@@ -42,11 +46,18 @@ public:
   int playbackIndex() const { return m_playbackIndex; }
   int videoIndex() const { return m_videoIndex; }
   bool videoPreviewActive() const { return m_videoPreview != nullptr; }
+  // PJSIP's window for the running preview, or -1
+  int previewWindowId() const;
   Q_INVOKABLE void setVideoDevice(int index);
   // PJSIP's id of the chosen camera, or its "default camera" id
   int selectedVideoDevice() const;
 
   Q_INVOKABLE void refreshDevices();
+  QStringList audioOutputs() const { return m_audioOutputs; }
+  Q_INVOKABLE void setAudioOutput(const QString &name);
+  Q_INVOKABLE void refreshAudioOutputs();
+  // Android: puts the phone in or out of call audio, on the loudspeaker
+  void useLoudspeaker(bool on);
   Q_INVOKABLE void setAudioDevice(int captureIdx, int playbackIdx);
 
   Q_INVOKABLE bool isCodecEnabled(const QString &codecId) const;
@@ -75,6 +86,7 @@ public:
 
 signals:
   void devicesChanged();
+  void audioOutputsChanged();
   void volumeChanged();
   void echoCancellationChanged();
   void videoPreviewChanged();
@@ -84,6 +96,7 @@ private:
   ~HardwareService();
   pj::Endpoint *m_endpoint;
   pj::VideoPreview *m_videoPreview;
+  int m_previewDevice = -1;
   bool m_echoCancellation = true; // pjsua enables EC by default
   int m_captureIndex = 0; // positions in the lists exposed to QML
   int m_playbackIndex = 0;
@@ -92,6 +105,7 @@ private:
   mutable bool m_micVolumeUnsupported = false;
   QString m_savedVideoDevice; // what the accounts were last built with
   QStringList m_audioPlaybackDevices;
+  QStringList m_audioOutputs;
   QStringList m_audioCaptureDevices;
   QList<int> m_playbackDeviceIndices;
   QList<int> m_captureDeviceIndices;

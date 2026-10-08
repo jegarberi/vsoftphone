@@ -95,19 +95,20 @@ RUN curl -fsSL -o opus.tar.gz https://downloads.xiph.org/releases/opus/opus-${OP
     && make -j"$(nproc)" install > /dev/null \
     && cd .. && rm -rf opus-${OPUS_VERSION} opus.tar.gz
 
-# --- PJSIP, static, audio through OpenSL ES ----------------------------------
+# --- PJSIP, static: Android's own audio, camera and video codecs (MediaCodec),
+# pictures drawn with OpenGL ES; libyuv is PJSIP's bundled copy ---------------
 RUN curl -fsSL -o pjsip.tar.gz https://github.com/pjsip/pjproject/archive/refs/tags/${PJSIP_VERSION}.tar.gz \
     && echo "${PJSIP_SHA256}  pjsip.tar.gz" | sha256sum -c - \
     && tar -xzf pjsip.tar.gz && cd pjproject-${PJSIP_VERSION} \
-    && printf '#define PJ_CONFIG_ANDROID 1\n#include <pj/config_site_sample.h>\n#undef PJ_HAS_IPV6\n#define PJ_HAS_IPV6 1\n#undef PJMEDIA_HAS_VIDEO\n#define PJMEDIA_HAS_VIDEO 0\n' \
+    && printf '#define PJ_CONFIG_ANDROID 1\n#include <pj/config_site_sample.h>\n#undef PJ_HAS_IPV6\n#define PJ_HAS_IPV6 1\n#undef PJMEDIA_HAS_VIDEO\n#define PJMEDIA_HAS_VIDEO 1\n' \
        > pjlib/include/pj/config_site.h \
     && TARGET_ABI=${ANDROID_ABI} APP_PLATFORM=android-${ANDROID_API} \
        ./configure-android --use-ndk-cflags --prefix=/opt/pjsip \
        --with-ssl=/opt/deps --with-opus=/opt/deps \
-       --disable-video --disable-libwebrtc --disable-libyuv \
+       --disable-libwebrtc \
        --disable-opencore-amr --disable-bcg729 --disable-silk > /tmp/pjsip-configure.log 2>&1 \
        || { tail -40 /tmp/pjsip-configure.log; exit 1; } \
-    && grep -E "SSL support|opus_repacketizer|sound device backend" /tmp/pjsip-configure.log \
+    && grep -E "SSL support|opus_repacketizer|sound device backend|OpenGL|MediaCodec|libyuv" /tmp/pjsip-configure.log \
     && make dep > /dev/null 2>&1 \
     && (make -j"$(nproc)" lib > /tmp/pjsip-build.log 2>&1 || { grep -E "error|Error" /tmp/pjsip-build.log | head -30; exit 1; }) \
     && make install > /dev/null \

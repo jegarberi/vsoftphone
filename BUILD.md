@@ -82,8 +82,8 @@ the old one and keep its accounts.
 
 Tried on one phone (Android 14, 64-bit): it registers, and rings for a call
 while in the background. The interface was designed for a desktop, with
-separate windows for calls and settings. Audio only, like the other cross
-builds. What is different on Android, all in `android/`:
+separate windows for calls and settings. Unlike the other cross builds it
+has video. What is different on Android, all in `android/`:
 
 - **It keeps running off screen.** A foreground service (the "Ready for
   calls" notification) keeps the app registered after Back or Home, and an
@@ -93,6 +93,13 @@ builds. What is different on Android, all in `android/`:
 - **SIP uses port 5062, not 5060.** Phones keep 5060 for the carrier's own
   calling, and packets sent to it never reach an app. A direct call to the
   phone's IP address needs `:5062`.
+- **Video** uses the phone's cameras and its own H.264, VP8 and VP9 codecs.
+  The other side's picture, and the camera preview in Settings, are drawn
+  inside the window rather than in a window of their own; the picture is
+  stretched to the space it gets, and there is no view of your own camera
+  during a call. As on the desktop, only calls you start carry video.
+- **Sound** in a call can be switched between the earpiece, the loudspeaker
+  and a connected headset, from the call screen.
 - **The log goes to logcat**: `adb logcat -s MicrosipClone`, as detailed as
   Settings → Log says.
 

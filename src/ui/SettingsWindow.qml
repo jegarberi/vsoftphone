@@ -316,7 +316,34 @@ ApplicationWindow {
                         ? hardwareService.stopVideoPreview()
                         : hardwareService.startVideoPreview(cameraDevCombo.currentIndex)
                 }
-                Hint { text: "The preview opens in its own window." }
+                Hint { text: "The preview opens in its own window."; visible: Qt.platform.os !== "android" }
+            }
+            // Android: the preview is drawn here, on a surface of its own
+            // placed over this gap (see VideoSurface.java)
+            Item {
+                id: previewArea
+                readonly property bool shown: Qt.platform.os === "android" && hardwareService.videoPreviewActive
+                visible: shown
+                Layout.fillWidth: true
+                Layout.preferredHeight: width * 3 / 4
+                function place() {
+                    var at = mapToItem(null, 0, 0)
+                    var px = Screen.devicePixelRatio
+                    if (shown)
+                        callService.setVideoArea((settingsWindow.x + at.x) * px, (settingsWindow.y + at.y) * px,
+                                                 width * px, height * px)
+                    else
+                        callService.setVideoArea(0, 0, 0, 0)
+                }
+                onShownChanged: place()
+                onWidthChanged: place()
+                // The layout gives the height after the width
+                onHeightChanged: place()
+                onYChanged: place()
+                Connections {
+                    target: scroll.contentItem
+                    function onContentYChanged() { if (previewArea.shown) previewArea.place() }
+                }
             }
             Hint {
                 visible: callService.videoAvailable && cameraDevCombo.count === 0

@@ -4,6 +4,7 @@
 #include <QSettings>
 #ifdef Q_OS_ANDROID
 #include <QCoreApplication>
+#include <QJniEnvironment>
 #include <QJniObject>
 #endif
 #include <pjsua2/endpoint.hpp>
@@ -188,6 +189,14 @@ void HardwareService::refreshDevices() {
       qDebug() << " - Video Device:" << friendlyName;
     }
 
+#ifdef Q_OS_ANDROID
+    // A phone's camera sensor lies on its side; the phone is held upright
+    for (int index : std::as_const(m_videoDeviceIndices)) {
+      if (index >= 0)
+        vdm.setCaptureOrient(index, PJMEDIA_ORIENT_ROTATE_270DEG, true);
+    }
+#endif
+
     // Video Codecs
     const CodecInfoVector2 &vCodecs = m_endpoint->videoCodecEnum2();
     qDebug() << "HardwareService: Found" << vCodecs.size() << "video codecs";
@@ -288,14 +297,52 @@ void HardwareService::setCodecEnabled(const QString &codecId, bool enabled) {
   }
 }
 
-// Android plays call audio through the earpiece, where a test held at
-// arm's length is not heard: the test uses the loudspeaker
-static void useLoudspeaker(bool on) {
+#ifdef Q_OS_ANDROID
+static const char *phoneService = "dev/antigravity/microsipclone/PhoneService";
+#endif
+
+void HardwareService::setAudioOutput(const QString &name) {
 #ifdef Q_OS_ANDROID
   QJniObject::callStaticMethod<void>(
-      "dev/antigravity/microsipclone/PhoneService", "loudspeaker",
-      "(Landroid/content/Context;Z)V",
+      phoneService, "setAudioOutput",
+      "(Landroid/content/Context;Ljava/lang/String;)V",
+      QNativeInterface::QAndroidApplication::context(),
+      QJniObject::fromString(name).object());
+  refreshAudioOutputs();
+#else
+  Q_UNUSED(name);
+#endif
+}
+
+void HardwareService::refreshAudioOutputs() {
+#ifdef Q_OS_ANDROID
+  QStringList outputs;
+  const QJniObject names = QJniObject::callStaticObjectMethod(
+      phoneService, "audioOutputs",
+      "(Landroid/content/Context;)[Ljava/lang/String;",
+      QNativeInterface::QAndroidApplication::context());
+  QJniEnvironment env;
+  const auto array = names.object<jobjectArray>();
+  for (jsize i = 0; array && i < env->GetArrayLength(array); ++i)
+    outputs.append(
+        QJniObject::fromLocalRef(env->GetObjectArrayElement(array, i))
+            .toString());
+  if (outputs == m_audioOutputs)
+    return;
+  m_audioOutputs = outputs;
+  emit audioOutputsChanged();
+#endif
+}
+
+// Android plays call audio through the earpiece, where a test held at
+// arm's length is not heard: the test uses the loudspeaker
+void HardwareService::useLoudspeaker(bool on) {
+#ifdef Q_OS_ANDROID
+  QJniObject::callStaticMethod<void>(
+      phoneService, "inCall", "(Landroid/content/Context;Z)V",
       QNativeInterface::QAndroidApplication::context(), jboolean(on));
+  if (on)
+    setAudioOutput("Loudspeaker");
 #else
   Q_UNUSED(on);
 #endif
@@ -384,6 +431,7 @@ void HardwareService::startVideoPreview(int devIdx) {
     prm.format.fpsDenum = chosen->fpsDenum;
 
     m_videoPreview = new VideoPreview(devIdx);
+    m_previewDevice = devIdx;
     m_videoPreview->start(prm);
     emit videoPreviewChanged();
     qDebug() << "HardwareService: Video preview started for device" << devIdx;
@@ -396,6 +444,10 @@ void HardwareService::startVideoPreview(int devIdx) {
     }
     emit videoPreviewChanged();
   }
+}
+
+int HardwareService::previewWindowId() const {
+  return m_videoPreview ? pjsua_vid_preview_get_win(m_previewDevice) : -1;
 }
 
 void HardwareService::stopVideoPreview() {

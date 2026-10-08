@@ -24,7 +24,9 @@ extern "C" JavaVM *pj_jni_jvm;
 #endif
 
 #include "QmlSetup.h"
+#include "models/CallModel.h"
 #include "pjsip_wrapper/CallService.h"
+#include "pjsip_wrapper/HardwareService.h"
 #include "pjsip_wrapper/SipService.h"
 #include "pjsip_wrapper/StorageService.h"
 #include "ui/Theme.h"
@@ -83,6 +85,10 @@ int main(int argc, char *argv[]) {
   QtAndroidPrivate::requestPermission(
       QStringLiteral("android.permission.RECORD_AUDIO"))
       .waitForFinished();
+  // Asked for at the start as well: PJSIP lists the cameras when it starts
+  QtAndroidPrivate::requestPermission(
+      QStringLiteral("android.permission.CAMERA"))
+      .waitForFinished();
   // Android 13 asks before showing the call notifications below
   QtAndroidPrivate::requestPermission(
       QStringLiteral("android.permission.POST_NOTIFICATIONS"))
@@ -91,6 +97,15 @@ int main(int argc, char *argv[]) {
   // calls that arrive then (android/.../PhoneService.java)
   const char *phoneService = "dev/antigravity/microsipclone/PhoneService";
   const QJniObject context(QNativeInterface::QAndroidApplication::context());
+  // PJSIP's camera classes (android/src/org/pjsip) ask for this themselves
+  QJniObject::callStaticMethod<void>(
+      "org/pjsip/PjCameraInfo2", "SetCameraManager",
+      "(Landroid/hardware/camera2/CameraManager;)V",
+      context
+          .callObjectMethod("getSystemService",
+                            "(Ljava/lang/String;)Ljava/lang/Object;",
+                            QJniObject::fromString("camera").object())
+          .object());
   QJniObject::callStaticMethod<void>(phoneService, "start",
                                      "(Landroid/content/Context;)V",
                                      context.object());
@@ -108,6 +123,16 @@ int main(int argc, char *argv[]) {
                        QJniObject::callStaticMethod<void>(
                            phoneService, "callsOver",
                            "(Landroid/content/Context;)V", context.object());
+                                        // Call audio only goes where the user chose while
+                     // Android knows a call is on
+                     const bool over = state == "DISCONNECTED";
+                     if (over && CallModel::instance().activeCallId() >= 0)
+                       return;
+                     QJniObject::callStaticMethod<void>(
+                         phoneService, "inCall",
+                         "(Landroid/content/Context;Z)V", context.object(),
+                         jboolean(!over));
+                     HardwareService::instance().refreshAudioOutputs();
                    });
 #endif
 

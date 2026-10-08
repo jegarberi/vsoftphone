@@ -119,7 +119,48 @@ ApplicationWindow {
                  : Theme.muted
         }
 
-        Item { Layout.fillHeight: true }
+        // Android: the other side's picture is drawn here, on a surface of
+        // its own placed over this gap (the desktop gets a separate window)
+        Item {
+            id: videoArea
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            readonly property bool shown: Qt.platform.os === "android" && inCallWindow.hasVideo
+                                          && inCallWindow.callState !== "DISCONNECTED"
+            function place() {
+                var at = mapToItem(null, 0, 0)
+                var px = Screen.devicePixelRatio
+                if (shown)
+                    callService.setVideoArea((inCallWindow.x + at.x) * px, (inCallWindow.y + at.y) * px,
+                                             width * px, height * px)
+                else
+                    callService.setVideoArea(0, 0, 0, 0)
+            }
+            onShownChanged: place()
+            onWidthChanged: place()
+            onHeightChanged: place()
+            onYChanged: place()
+            Component.onDestruction: callService.setVideoArea(0, 0, 0, 0)
+        }
+
+        // Android: earpiece, loudspeaker, or a headset when one is connected
+        RowLayout {
+            Layout.fillWidth: true
+            visible: hardwareService.audioOutputs.length > 0
+            Label { text: "Sound" }
+            ComboBox {
+                Layout.fillWidth: true
+                model: hardwareService.audioOutputs
+                onActivated: hardwareService.setAudioOutput(currentText)
+            }
+            // A headset can be plugged in or switched on at any moment
+            Timer {
+                interval: 2000
+                repeat: true
+                running: parent.visible
+                onTriggered: hardwareService.refreshAudioOutputs()
+            }
+        }
 
         GridLayout {
             Layout.fillWidth: true

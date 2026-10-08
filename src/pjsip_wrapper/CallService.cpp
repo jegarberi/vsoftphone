@@ -1,5 +1,6 @@
 #include "CallService.h"
 #include "../models/CallModel.h"
+#include "HardwareService.h"
 #include "SipService.h"
 #include "SipUri.h"
 #include "StorageService.h"
@@ -7,6 +8,12 @@
 #include <QDebug>
 #include <QDir>
 #include <QStandardPaths>
+#ifdef Q_OS_ANDROID
+#include <QCoreApplication>
+#include <QJniEnvironment>
+#include <QJniObject>
+#include <android/native_window_jni.h>
+#endif
 
 using namespace pj;
 
@@ -99,6 +106,10 @@ void CallService::handleMediaState(int callId) {
                << QString::fromStdString(err.info());
   }
 
+  if (hasVideo)
+    showVideo();
+  else
+    m_videoShownIn = -1;
   emit callMediaStateChanged(callId, hasVideo);
 }
 
@@ -107,7 +118,84 @@ CallService &CallService::instance() {
   return _instance;
 }
 
+void CallService::setVideoArea(int x, int y, int width, int height) {
+#ifdef Q_OS_ANDROID
+  QJniObject::callStaticMethod<void>(
+      "dev/antigravity/microsipclone/VideoSurface", "place",
+      "(Landroid/app/Activity;IIII)V",
+      QNativeInterface::QAndroidApplication::context(), x, y, width, height);
+#else
+  Q_UNUSED(x); Q_UNUSED(y); Q_UNUSED(width); Q_UNUSED(height);
+#endif
+}
+
+void CallService::setVideoSurface(void *window) {
+#ifdef Q_OS_ANDROID
+  if (m_videoSurface)
+    ANativeWindow_release(static_cast<ANativeWindow *>(m_videoSurface));
+  m_videoSurface = window;
+  m_videoShownIn = -1;
+  showVideo();
+#else
+  Q_UNUSED(window);
+#endif
+}
+
+// Hands the surface to the video window of the call that has one, or else
+// to the camera preview of Settings. PJSIP's renderer draws nothing until it
+// is given a surface.
+void CallService::showVideo() {
+#ifdef Q_OS_ANDROID
+  int window = HardwareService::instance().previewWindowId();
+  for (const auto &call : std::as_const(m_activeCalls)) {
+    try {
+      const CallInfo ci = call->getInfo();
+      for (const CallMediaInfo &media : ci.media) {
+        if (media.type == PJMEDIA_TYPE_VIDEO && media.videoIncomingWindowId >= 0)
+          window = media.videoIncomingWindowId;
+      }
+    } catch (Error &) {
+    }
+  }
+  if (window < 0 || window == m_videoShownIn)
+    return;
+  try {
+    VideoWindowHandle handle;
+    handle.type = PJMEDIA_VID_DEV_HWND_TYPE_ANDROID;
+    handle.handle.window = m_videoSurface;
+    // The renderer keeps the reference it is given, and drops it itself
+    if (m_videoSurface)
+      ANativeWindow_acquire(static_cast<ANativeWindow *>(m_videoSurface));
+    VideoWindow(window).setWindow(handle);
+    m_videoShownIn = window;
+  } catch (Error &err) {
+    qWarning() << "Error showing video:" << QString::fromStdString(err.info());
+  }
+#endif
+}
+
 CallService::CallService(QObject *parent) : QObject(parent) {
+#ifdef Q_OS_ANDROID
+  // VideoSurface.java reports its surface here, on Android's own thread
+  const JNINativeMethod surfaceChanged{
+      "surfaceChanged", "(Landroid/view/Surface;)V",
+      reinterpret_cast<void *>(
+          +[](JNIEnv *env, jclass, jobject surface) {
+            ANativeWindow *window =
+                surface ? ANativeWindow_fromSurface(env, surface) : nullptr;
+            QMetaObject::invokeMethod(
+                &CallService::instance(),
+                [window] { CallService::instance().setVideoSurface(window); },
+                Qt::QueuedConnection);
+          })};
+  QJniEnvironment().registerNativeMethods(
+      "dev/antigravity/microsipclone/VideoSurface", &surfaceChanged, 1);
+  connect(&HardwareService::instance(), &HardwareService::videoPreviewChanged,
+          this, [this] {
+            m_videoShownIn = -1;
+            showVideo();
+          });
+#endif
   connect(this, &CallService::outgoingCall, [this](int id, QString uri) {
     m_lastCallId = id;
     m_lastRemoteUri = uri;
