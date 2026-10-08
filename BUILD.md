@@ -95,9 +95,7 @@ has video. What is different on Android, all in `android/`:
   phone's IP address needs `:5062`.
 - **Video** uses the phone's cameras and its own H.264, VP8 and VP9 codecs,
   the hardware ones where the phone has them.
-  The other side's picture, and the camera preview in Settings, are drawn
-  inside the window rather than in a window of their own, and there is no
-  view of your own camera during a call.
+  There is no view of your own camera during a call.
 - **Sound** in a call can be switched between the earpiece, the loudspeaker
   and a connected headset, from the call screen.
 - **The log goes to logcat**: `adb logcat -s MicrosipClone`, as detailed as

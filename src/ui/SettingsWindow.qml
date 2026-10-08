@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material as M
 import QtQuick.Layouts
+import MicrosipClone 1.0
 
 ApplicationWindow {
     id: settingsWindow
@@ -345,34 +346,11 @@ ApplicationWindow {
                         ? hardwareService.stopVideoPreview()
                         : hardwareService.startVideoPreview(cameraDevCombo.currentIndex)
                 }
-                Hint { text: "The preview opens in its own window."; visible: Qt.platform.os !== "android" }
             }
-            // Android: the preview is drawn here, on a surface of its own
-            // placed over this gap (see VideoSurface.java)
-            Item {
-                id: previewArea
-                readonly property bool shown: Qt.platform.os === "android" && hardwareService.videoPreviewActive
-                visible: shown
+            VideoView {
+                visible: hardwareService.videoPreviewActive
                 Layout.fillWidth: true
                 Layout.preferredHeight: width * 3 / 4
-                function place() {
-                    var at = mapToItem(null, 0, 0)
-                    var px = Screen.devicePixelRatio
-                    if (shown)
-                        callService.setVideoArea((settingsWindow.x + at.x) * px, (settingsWindow.y + at.y) * px,
-                                                 width * px, height * px)
-                    else
-                        callService.setVideoArea(0, 0, 0, 0)
-                }
-                onShownChanged: place()
-                onWidthChanged: place()
-                // The layout gives the height after the width
-                onHeightChanged: place()
-                onYChanged: place()
-                Connections {
-                    target: scroll.contentItem
-                    function onContentYChanged() { if (previewArea.shown) previewArea.place() }
-                }
             }
             Label { text: "Video codecs"; visible: callService.videoAvailable }
             Flow {

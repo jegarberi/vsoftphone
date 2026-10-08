@@ -594,7 +594,7 @@ void SipService::init() {
           "<sip:" +
           std::string(ti.local_name.host.ptr, ti.local_name.host.slen) + ":" +
           std::to_string(ti.local_name.port) + ">";
-      local.videoConfig.autoShowIncoming = true;
+      local.videoConfig.autoShowIncoming = false; // drawn by VideoSink
       local.videoConfig.autoTransmitOutgoing = true;
       m_localAccount = std::make_shared<MyAccount>();
       m_localAccount->create(local);
@@ -814,7 +814,7 @@ void SipService::applyAccount(const QString &id, const QVariantMap &config) {
     // A call carries video only when it was started or answered with it
     if (compactSip()) // drops Session-Expires and Min-SE from every INVITE
       cfg.callConfig.timerUse = PJSUA_SIP_TIMER_INACTIVE;
-    cfg.videoConfig.autoShowIncoming = true;
+    cfg.videoConfig.autoShowIncoming = false; // drawn by VideoSink
     cfg.videoConfig.autoTransmitOutgoing = true;
     cfg.videoConfig.defaultCaptureDevice =
         HardwareService::instance().selectedVideoDevice();

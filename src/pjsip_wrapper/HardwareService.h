@@ -48,8 +48,9 @@ public:
   int playbackIndex() const { return m_playbackIndex; }
   int videoIndex() const { return m_videoIndex; }
   bool videoPreviewActive() const { return m_videoPreview != nullptr; }
-  // PJSIP's window for the running preview, or -1
-  int previewWindowId() const;
+  // Where the running preview's pictures come from in PJSIP's video
+  // bridge, or -1
+  int previewConfPort() const;
   Q_INVOKABLE void setVideoDevice(int index);
   // The picture sent in video calls: "640x480" and frames per second. An
   // empty size or 0 keeps the codec's own. Used from the next call on.

@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material as M
 import QtQuick.Layouts
+import MicrosipClone 1.0
 
 ApplicationWindow {
     id: inCallWindow
@@ -119,28 +120,15 @@ ApplicationWindow {
                  : Theme.muted
         }
 
-        // Android: the other side's picture is drawn here, on a surface of
-        // its own placed over this gap (the desktop gets a separate window)
-        Item {
-            id: videoArea
+        // The other side's picture in a video call; an empty gap otherwise
+        VideoView {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            readonly property bool shown: Qt.platform.os === "android" && inCallWindow.hasVideo
-                                          && inCallWindow.callState !== "DISCONNECTED"
-            function place() {
-                var at = mapToItem(null, 0, 0)
-                var px = Screen.devicePixelRatio
-                if (shown)
-                    callService.setVideoArea((inCallWindow.x + at.x) * px, (inCallWindow.y + at.y) * px,
-                                             width * px, height * px)
-                else
-                    callService.setVideoArea(0, 0, 0, 0)
-            }
-            onShownChanged: place()
-            onWidthChanged: place()
-            onHeightChanged: place()
-            onYChanged: place()
-            Component.onDestruction: callService.setVideoArea(0, 0, 0, 0)
+            visible: inCallWindow.hasVideo && inCallWindow.callState !== "DISCONNECTED"
+        }
+        Item {
+            Layout.fillHeight: true
+            visible: !(inCallWindow.hasVideo && inCallWindow.callState !== "DISCONNECTED")
         }
 
         // Android: earpiece, loudspeaker, or a headset when one is connected

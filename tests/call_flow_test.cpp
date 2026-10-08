@@ -30,6 +30,7 @@
 #include "pjsip_wrapper/BlfService.h"
 #include "pjsip_wrapper/CallService.h"
 #include "pjsip_wrapper/HardwareService.h"
+#include "pjsip_wrapper/VideoSink.h"
 #include "pjsip_wrapper/Keyring.h"
 #include "pjsip_wrapper/SipService.h"
 #include "pjsip_wrapper/SipUri.h"
@@ -618,6 +619,12 @@ int main(int argc, char *argv[]) {
   CHECK(callService.offersVideo(callId(1)) == callService.videoAvailable());
   callService.answerCall(callId(1), true);
   CHECK(waitFor([] { return allConfirmed(2); }));
+  // The call's picture is drawn by the interface, not in a window of PJSIP's
+  if (callService.videoAvailable()) {
+    const int before = VideoSink::instance().frameCount();
+    CHECK(waitFor([&] { return VideoSink::instance().frameCount() > before + 3; }, 15000));
+    CHECK(!VideoSink::instance().frame().isNull());
+  }
   callService.hangupCall(callId(0));
   CHECK(waitFor([] { return CallModel::instance().rowCount() == 0; }));
 

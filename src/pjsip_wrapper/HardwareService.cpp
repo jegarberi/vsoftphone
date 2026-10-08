@@ -510,6 +510,7 @@ void HardwareService::startVideoPreview(int devIdx) {
     VideoPreviewOpParam prm;
     prm.rendId = PJMEDIA_VID_DEFAULT_RENDER_DEV;
     prm.window.type = PJMEDIA_VID_DEV_HWND_TYPE_NONE;
+    prm.show = false; // Settings draws the pictures itself (VideoSink)
 
     // PJSIP aborts on a preview without a picture format, so one of the
     // camera's own formats is always given, a common one if it has it
@@ -549,8 +550,12 @@ void HardwareService::startVideoPreview(int devIdx) {
   }
 }
 
-int HardwareService::previewWindowId() const {
-  return m_videoPreview ? pjsua_vid_preview_get_win(m_previewDevice) : -1;
+int HardwareService::previewConfPort() const {
+#if PJSUA_HAS_VIDEO
+  if (m_videoPreview)
+    return pjsua_vid_preview_get_vid_conf_port(m_previewDevice);
+#endif
+  return -1;
 }
 
 void HardwareService::stopVideoPreview() {

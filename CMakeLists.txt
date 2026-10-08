@@ -37,6 +37,7 @@ add_library(microsip_core STATIC
     src/pjsip_wrapper/SipService.cpp
     src/pjsip_wrapper/HardwareService.cpp
     src/pjsip_wrapper/CallService.cpp
+    src/pjsip_wrapper/VideoSink.cpp
     src/pjsip_wrapper/PresenceService.cpp
     src/pjsip_wrapper/BuddyService.cpp
     src/pjsip_wrapper/BlfService.cpp

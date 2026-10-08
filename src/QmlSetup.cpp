@@ -18,6 +18,7 @@
 #include "pjsip_wrapper/SipService.h"
 #include "pjsip_wrapper/StorageService.h"
 #include "ui/Theme.h"
+#include "pjsip_wrapper/VideoSink.h"
 
 void setupQml(QQmlEngine &engine) {
   // One look on every platform: the Material style, in its compact desktop
@@ -41,6 +42,7 @@ void setupQml(QQmlEngine &engine) {
 
   qmlRegisterType<HistoryModel>("MicrosipClone", 1, 0, "HistoryModel");
   qmlRegisterType<MessageModel>("MicrosipClone", 1, 0, "MessageModel");
+  qmlRegisterType<VideoView>("MicrosipClone", 1, 0, "VideoView");
 
   QQmlContext *ctx = engine.rootContext();
   ctx->setContextProperty("hardwareService", &HardwareService::instance());

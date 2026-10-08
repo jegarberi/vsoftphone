@@ -3,7 +3,6 @@
 
 #include <QMap>
 #include <QObject>
-#include <QRect>
 #include <QSet>
 #include <QUrl>
 #include <QVariantMap>
@@ -65,12 +64,6 @@ public:
   int lastCallId() const { return m_lastCallId; }
   QString lastRemoteUri() const { return m_lastRemoteUri; }
 
-  // Android: where on the screen (in pixels) the call window wants the
-  // other side's picture; an empty rectangle takes it away
-  Q_INVOKABLE void setVideoArea(int x, int y, int width, int height);
-  // Android: the surface to draw that picture on (an ANativeWindow), or null
-  void setVideoSurface(void *window);
-
 signals:
   void incomingCall(int callId, QString remoteUri);
   void outgoingCall(int callId, QString remoteUri);
@@ -85,11 +78,6 @@ private:
   ~CallService();
 
   QMap<int, std::shared_ptr<MyCall>> m_activeCalls;
-  void showVideo();
-  void placeVideo();
-  int videoWindowId() const;
-  // Where the call window wants the picture, and where the surface was put
-  QRect m_videoArea, m_videoPlaced;
   void *m_videoSurface = nullptr;
   // The video window that already draws on m_videoSurface, or -1
   int m_videoShownIn = -1;
