@@ -24,6 +24,8 @@ class Theme : public QObject {
   Q_PROPERTY(QColor foreground READ foreground NOTIFY changed)
   Q_PROPERTY(QColor muted READ muted NOTIFY changed)
   Q_PROPERTY(QColor accent READ accent NOTIFY changed)
+  // Corner radius of buttons in pixels; -1 means fully rounded
+  Q_PROPERTY(int radius READ radius NOTIFY changed)
   Q_PROPERTY(QColor success READ success CONSTANT)
   Q_PROPERTY(QColor danger READ danger CONSTANT)
   Q_PROPERTY(QColor warning READ warning CONSTANT)
@@ -42,6 +44,7 @@ public:
     const char *foreground;
     const char *muted;
     const char *accent;
+    int radius;
   };
 
   static Theme &instance();
@@ -56,6 +59,7 @@ public:
   QColor foreground() const { return QColor(palette().foreground); }
   QColor muted() const { return QColor(palette().muted); }
   QColor accent() const { return QColor(palette().accent); }
+  int radius() const { return palette().radius; }
   QColor success() const { return QColor("#22C55E"); }
   QColor danger() const { return QColor("#EF4444"); }
   QColor warning() const { return QColor("#F59E0B"); }

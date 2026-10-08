@@ -4,14 +4,22 @@
 #include <QSettings>
 #include <QStyleHints>
 
-//                     name               dark   background surface   foreground muted     accent
+// radius: corner radius of buttons in pixels, -1 for fully rounded
+//   name               dark   background surface   foreground muted     accent    radius
 static const Theme::Palette kPalettes[] = {
-    {"Light",           false, "#F7F8FA", "#FFFFFF", "#1F2328", "#6B7280", "#2563EB"},
-    {"Dark",            true,  "#1E1F22", "#2B2D31", "#E6E7E9", "#9AA0A6", "#5B9BFF"},
-    {"Midnight",        true,  "#000000", "#141414", "#EDEDED", "#8A8F98", "#22D3EE"},
-    {"Nord",            true,  "#2E3440", "#3B4252", "#ECEFF4", "#A7B1C2", "#88C0D0"},
-    {"Solarized Light", false, "#FDF6E3", "#EEE8D5", "#586E75", "#93A1A1", "#268BD2"},
-    {"Solarized Dark",  true,  "#002B36", "#073642", "#EEE8D5", "#839496", "#2AA198"},
+    {"Light",           false, "#F7F8FA", "#FFFFFF", "#1F2328", "#6B7280", "#2563EB", -1},
+    {"Dark",            true,  "#1E1F22", "#2B2D31", "#E6E7E9", "#9AA0A6", "#5B9BFF", -1},
+    {"Midnight",        true,  "#000000", "#141414", "#EDEDED", "#8A8F98", "#22D3EE", -1},
+    {"Nord",            true,  "#2E3440", "#3B4252", "#ECEFF4", "#A7B1C2", "#88C0D0", -1},
+    {"Solarized Light", false, "#FDF6E3", "#EEE8D5", "#586E75", "#93A1A1", "#268BD2", -1},
+    {"Solarized Dark",  true,  "#002B36", "#073642", "#EEE8D5", "#839496", "#2AA198", -1},
+    // Colours of old desktops. Only colours and corners: no bevels or gradients
+    {"Windows 3.11",    false, "#FFFFFF", "#C0C0C0", "#000000", "#606060", "#000080", 0},
+    {"Windows 95",      false, "#C0C0C0", "#DFDFDF", "#000000", "#404040", "#000080", 0},
+    {"Windows 98",      false, "#D4D0C8", "#FFFFFF", "#000000", "#404040", "#0A246A", 0},
+    {"Windows XP",      false, "#ECE9D8", "#FFFFFF", "#000000", "#5F5F5F", "#245EDC", 3},
+    {"Windows 7",       false, "#F0F0F0", "#FFFFFF", "#1E1E1E", "#6D6D6D", "#2B7CD3", 3},
+    {"Mac OS X",        false, "#ECECEC", "#FFFFFF", "#000000", "#6E6E6E", "#2F7BF6", -1},
 };
 
 static QSettings settingsFile() {

@@ -28,8 +28,11 @@ Button {
     font.capitalization: Font.MixedCase
 
     background: Rectangle {
-        radius: height / 2
+        radius: Theme.radius < 0 ? height / 2 : Theme.radius
         color: control.fill
+        // Square buttons of the old desktops had an outline
+        border.width: Theme.radius === 0 ? 1 : 0
+        border.color: Theme.muted
         opacity: !control.enabled ? 0.4 : control.down ? 0.7 : control.hovered ? 0.88 : 1
     }
 
