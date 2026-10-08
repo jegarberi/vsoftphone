@@ -96,11 +96,13 @@ RUN curl -fsSL -o opus.tar.gz https://downloads.xiph.org/releases/opus/opus-${OP
     && cd .. && rm -rf opus-${OPUS_VERSION} opus.tar.gz
 
 # --- PJSIP, static: Android's own audio, camera and video codecs (MediaCodec),
-# pictures drawn with OpenGL ES; libyuv is PJSIP's bundled copy ---------------
+# pictures drawn with OpenGL ES; libyuv is PJSIP's bundled copy. The phone's
+# hardware video codecs are preferred to Android's software ones (PJSIP's
+# default), which lag ---------------
 RUN curl -fsSL -o pjsip.tar.gz https://github.com/pjsip/pjproject/archive/refs/tags/${PJSIP_VERSION}.tar.gz \
     && echo "${PJSIP_SHA256}  pjsip.tar.gz" | sha256sum -c - \
     && tar -xzf pjsip.tar.gz && cd pjproject-${PJSIP_VERSION} \
-    && printf '#define PJ_CONFIG_ANDROID 1\n#include <pj/config_site_sample.h>\n#undef PJ_HAS_IPV6\n#define PJ_HAS_IPV6 1\n#undef PJMEDIA_HAS_VIDEO\n#define PJMEDIA_HAS_VIDEO 1\n' \
+    && printf '#define PJ_CONFIG_ANDROID 1\n#include <pj/config_site_sample.h>\n#undef PJ_HAS_IPV6\n#define PJ_HAS_IPV6 1\n#undef PJMEDIA_HAS_VIDEO\n#define PJMEDIA_HAS_VIDEO 1\n#define PJMEDIA_AND_MEDIA_PRIO_SW_VID_ENC 0\n#define PJMEDIA_AND_MEDIA_PRIO_SW_VID_DEC 0\n' \
        > pjlib/include/pj/config_site.h \
     && TARGET_ABI=${ANDROID_ABI} APP_PLATFORM=android-${ANDROID_API} \
        ./configure-android --use-ndk-cflags --prefix=/opt/pjsip \

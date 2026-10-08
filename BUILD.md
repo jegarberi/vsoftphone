@@ -93,7 +93,8 @@ has video. What is different on Android, all in `android/`:
 - **SIP uses port 5062, not 5060.** Phones keep 5060 for the carrier's own
   calling, and packets sent to it never reach an app. A direct call to the
   phone's IP address needs `:5062`.
-- **Video** uses the phone's cameras and its own H.264, VP8 and VP9 codecs.
+- **Video** uses the phone's cameras and its own H.264, VP8 and VP9 codecs,
+  the hardware ones where the phone has them.
   The other side's picture, and the camera preview in Settings, are drawn
   inside the window rather than in a window of their own, and there is no
   view of your own camera during a call.
