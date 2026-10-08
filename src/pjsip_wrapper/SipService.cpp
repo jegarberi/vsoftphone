@@ -333,6 +333,17 @@ void SipService::setUserAgent(const QString &agent) {
   emit callHandlingChanged();
 }
 
+QString SipService::localAddress() const {
+  if (!m_endpoint || m_udpTransportId == PJSUA_INVALID_ID)
+    return QString();
+  try {
+    return QString::fromStdString(
+        m_endpoint->transportGetInfo(m_udpTransportId).localName);
+  } catch (Error &) {
+    return QString();
+  }
+}
+
 int SipService::logLevel() const {
   return qBound(0, QSettings().value("sip/logLevel", 1).toInt(), 3);
 }

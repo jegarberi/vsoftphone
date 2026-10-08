@@ -8,6 +8,7 @@
 #include <QDebug>
 #include <QDir>
 #include <QStandardPaths>
+#include <QTimer>
 #ifdef Q_OS_ANDROID
 #include <QCoreApplication>
 #include <QJniEnvironment>
@@ -119,13 +120,53 @@ CallService &CallService::instance() {
 }
 
 void CallService::setVideoArea(int x, int y, int width, int height) {
+  m_videoArea = QRect(x, y, width, height);
+  placeVideo();
+}
+
+// The video window showing now: a call's, or else the Settings preview's
+int CallService::videoWindowId() const {
+  int window = HardwareService::instance().previewWindowId();
+  for (const auto &call : std::as_const(m_activeCalls)) {
+    try {
+      const CallInfo ci = call->getInfo();
+      for (const CallMediaInfo &media : ci.media) {
+        if (media.type == PJMEDIA_TYPE_VIDEO && media.videoIncomingWindowId >= 0)
+          window = media.videoIncomingWindowId;
+      }
+    } catch (Error &) {
+    }
+  }
+  return window;
+}
+
+// Puts the surface in the middle of its area, as large as fits with the
+// picture's own proportions
+void CallService::placeVideo() {
 #ifdef Q_OS_ANDROID
+  QRect where = m_videoArea;
+  const int window = videoWindowId();
+  if (!where.isEmpty() && window >= 0) {
+    try {
+      const MediaSize picture = VideoWindow(window).getInfo().size;
+      if (picture.w > 0 && picture.h > 0) {
+        const QSize fitted = QSize(picture.w, picture.h)
+                                 .scaled(where.size(), Qt::KeepAspectRatio);
+        where = QRect(where.x() + (where.width() - fitted.width()) / 2,
+                      where.y() + (where.height() - fitted.height()) / 2,
+                      fitted.width(), fitted.height());
+      }
+    } catch (Error &) {
+    }
+  }
+  if (where == m_videoPlaced)
+    return;
+  m_videoPlaced = where;
   QJniObject::callStaticMethod<void>(
       "dev/antigravity/microsipclone/VideoSurface", "place",
       "(Landroid/app/Activity;IIII)V",
-      QNativeInterface::QAndroidApplication::context(), x, y, width, height);
-#else
-  Q_UNUSED(x); Q_UNUSED(y); Q_UNUSED(width); Q_UNUSED(height);
+      QNativeInterface::QAndroidApplication::context(), where.x(), where.y(),
+      where.width(), where.height());
 #endif
 }
 
@@ -146,17 +187,8 @@ void CallService::setVideoSurface(void *window) {
 // is given a surface.
 void CallService::showVideo() {
 #ifdef Q_OS_ANDROID
-  int window = HardwareService::instance().previewWindowId();
-  for (const auto &call : std::as_const(m_activeCalls)) {
-    try {
-      const CallInfo ci = call->getInfo();
-      for (const CallMediaInfo &media : ci.media) {
-        if (media.type == PJMEDIA_TYPE_VIDEO && media.videoIncomingWindowId >= 0)
-          window = media.videoIncomingWindowId;
-      }
-    } catch (Error &) {
-    }
-  }
+  placeVideo();
+  const int window = videoWindowId();
   if (window < 0 || window == m_videoShownIn)
     return;
   try {
@@ -190,6 +222,12 @@ CallService::CallService(QObject *parent) : QObject(parent) {
           })};
   QJniEnvironment().registerNativeMethods(
       "dev/antigravity/microsipclone/VideoSurface", &surfaceChanged, 1);
+  // ponytail: polled, because the picture's size is only known once the
+  // first frame has been decoded and can change during a call; PJSIP's
+  // media events (onCallMediaEvent) would say exactly when
+  auto *refit = new QTimer(this);
+  connect(refit, &QTimer::timeout, this, &CallService::placeVideo);
+  refit->start(1000);
   connect(&HardwareService::instance(), &HardwareService::videoPreviewChanged,
           this, [this] {
             m_videoShownIn = -1;

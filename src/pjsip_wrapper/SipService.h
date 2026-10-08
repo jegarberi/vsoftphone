@@ -139,6 +139,8 @@ public:
   void setForceRelay(bool v) { setNet("forceRelay", v, false); }
   bool compactSip() const { return net("compactSip", false).toBool(); }
   void setCompactSip(bool enabled);
+  // "address:port" a direct IP call to this phone is dialled at, or empty
+  Q_INVOKABLE QString localAddress() const;
   // Re-registers the active accounts if a network setting changed
   Q_INVOKABLE void applyNetworkSettings();
   // Something else the accounts are built from changed (the camera)

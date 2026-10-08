@@ -190,7 +190,12 @@ ApplicationWindow {
                 text: "Accept direct IP calls"
                 checked: sipService.acceptIpCalls
             }
-            Hint { text: "With this on, anyone who can reach this machine can make it ring." }
+            Hint {
+                // Read again each time the box is ticked: the address changes with the network
+                text: "With this on, anyone who can reach this machine can make it ring."
+                      + (acceptIpCheck.checked && sipService.localAddress() !== ""
+                         ? " To call it, dial " + sipService.localAddress() + "." : "")
+            }
             RowLayout {
                 Layout.fillWidth: true
                 Label { text: "Presence"; Layout.fillWidth: true }

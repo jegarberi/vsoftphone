@@ -3,6 +3,7 @@
 
 #include <QMap>
 #include <QObject>
+#include <QRect>
 #include <QSet>
 #include <QUrl>
 #include <QVariantMap>
@@ -82,6 +83,10 @@ private:
 
   QMap<int, std::shared_ptr<MyCall>> m_activeCalls;
   void showVideo();
+  void placeVideo();
+  int videoWindowId() const;
+  // Where the call window wants the picture, and where the surface was put
+  QRect m_videoArea, m_videoPlaced;
   void *m_videoSurface = nullptr;
   // The video window that already draws on m_videoSurface, or -1
   int m_videoShownIn = -1;
