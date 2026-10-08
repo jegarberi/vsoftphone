@@ -97,6 +97,28 @@ on every start and are printed with the rest of the settings; run two copies
 of the softphone on different machines, or one here and one elsewhere on the
 network, and enter one account in each.
 
+## A TURN relay
+
+```bash
+make turn        # starts coturn in Docker and prints the settings to enter
+make turn-down
+make turn-test   # runs the call test with media forced through it
+```
+
+`coturn/` holds a coturn configuration for the softphone
+(`turnserver.conf`) and a compose file that runs it on the host's network
+(Linux only): TURN over UDP on port 3478, relay ports 49160 to 49200. The
+user is `softphone`; the password is random on every start, or the one in
+`TURN_PASSWORD`, and is printed with the rest of the settings. Enter them
+in Settings > Network, and tick "Always send media through the TURN relay"
+to force every call through it.
+
+A relay only helps against NAT from a machine that both the softphone and
+the SIP server can reach, which usually means one with a public address;
+open UDP 3478 and 49160 to 49200 there. If that machine has a private
+address itself (most cloud servers), start it with
+`EXTERNAL_IP=<its public address> make turn`.
+
 ## Screenshots
 
 The test can save a picture of every window and of each tab:

@@ -349,6 +349,30 @@ asterisk-test: ## Run the call test against that Asterisk as well (registration,
 	  build/Release/call_flow_test 2>&1 | grep -a "call_flow_test:"
 	$(ASTERISK) down
 
+##@ TURN relay (coturn in Docker, Linux)
+
+TURN := docker compose -f coturn/compose.yaml
+
+.PHONY: turn
+turn: ## Start a coturn TURN relay and print the settings for the softphone
+	$(TURN) up -d --quiet-pull
+	@sleep 2
+	@$(TURN) logs --no-log-prefix coturn | sed -n '/=== Softphone settings/,/^====*$$/p' | tail -n 8
+
+.PHONY: turn-down
+turn-down: ## Stop it
+	$(TURN) down
+
+# A fixed password here: the test has to know it
+.PHONY: turn-test
+turn-test: ## Run the call test with media forced through that relay
+	TURN_PASSWORD=test-turn-pass $(TURN) up -d --quiet-pull --force-recreate
+	@sleep 3
+	MICROSIP_TEST_TURN=$$(ip -4 route get 1.1.1.1 | sed -n 's/.* src \([0-9.]*\).*/\1/p'):3478 \
+	MICROSIP_TEST_TURN_USER=softphone MICROSIP_TEST_TURN_PASS=test-turn-pass \
+	  build/Release/call_flow_test 2>&1 | grep -a "call_flow_test:"
+	$(TURN) down
+
 ##@ Help
 
 .PHONY: help

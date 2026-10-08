@@ -1,0 +1,23 @@
+# A coturn TURN relay for the softphone, for networks where audio does not
+# get through directly.
+#
+#   docker compose -f coturn/compose.yaml up      (or: make turn)
+#
+# The settings to enter in the softphone are printed when it starts.
+services:
+  coturn:
+    image: coturn/coturn:4.6
+    # The relay hands out ports on this machine: straight on the host's
+    # network, with no Docker NAT in between. Linux only.
+    network_mode: host
+    volumes:
+      - .:/turn:ro
+    entrypoint: ["/bin/sh", "/turn/entrypoint.sh"]
+    environment:
+      TURN_USER: "${TURN_USER:-softphone}"
+      # Random on every start unless given here
+      TURN_PASSWORD: "${TURN_PASSWORD:-}"
+      TURN_REALM: "${TURN_REALM:-microsip}"
+      # The public address, when this machine itself is behind NAT
+      EXTERNAL_IP: "${EXTERNAL_IP:-}"
+    stop_grace_period: 3s
