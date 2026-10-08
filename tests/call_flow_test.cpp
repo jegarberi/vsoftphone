@@ -578,6 +578,21 @@ int main(int argc, char *argv[]) {
   CHECK(historyCount("Incoming") == 2); // the two answered calls above
   sip.setDoNotDisturb(false);
 
+  // --- a ringing call says whether it asks for video, and can be answered
+  // with it ------------------------------------------------------------------
+  callService.makeCall(accountId, "tester");
+  CHECK(waitFor([] { return CallModel::instance().rowCount() == 2; }));
+  CHECK(!callService.offersVideo(callId(1)));
+  callService.hangupCall(callId(0));
+  CHECK(waitFor([] { return CallModel::instance().rowCount() == 0; }));
+  callService.makeCall(accountId, "tester", true);
+  CHECK(waitFor([] { return CallModel::instance().rowCount() == 2; }));
+  CHECK(callService.offersVideo(callId(1)) == callService.videoAvailable());
+  callService.answerCall(callId(1), true);
+  CHECK(waitFor([] { return allConfirmed(2); }));
+  callService.hangupCall(callId(0));
+  CHECK(waitFor([] { return CallModel::instance().rowCount() == 0; }));
+
   // --- instant message to ourselves lands in one conversation ---------------
   MessageModel messages;
   messages.setCurrentRemoteParty("tester");

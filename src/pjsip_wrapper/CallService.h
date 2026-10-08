@@ -34,7 +34,10 @@ public:
 
   Q_INVOKABLE void makeCall(const QString &accountId,
                             const QString &destination, bool video = false);
-  Q_INVOKABLE void answerCall(int callId);
+  // With video only when asked: answering must not turn the camera on
+  Q_INVOKABLE void answerCall(int callId, bool video = false);
+  // Whether a ringing call asks for video, and this build can do it
+  Q_INVOKABLE bool offersVideo(int callId) const;
   Q_INVOKABLE void hangupCall(int callId);
   Q_INVOKABLE void toggleMute(int callId);
   // Starts or stops recording the call to a WAV file; returns the new state

@@ -811,7 +811,7 @@ void SipService::applyAccount(const QString &id, const QVariantMap &config) {
       cfg.mediaConfig.ipv6Use = PJSUA_IPV6_ENABLED_PREFER_IPV4;
     }
 
-    // Only calls started with video carry a video stream (see answerCall)
+    // A call carries video only when it was started or answered with it
     if (compactSip()) // drops Session-Expires and Min-SE from every INVITE
       cfg.callConfig.timerUse = PJSUA_SIP_TIMER_INACTIVE;
     cfg.videoConfig.autoShowIncoming = true;

@@ -304,13 +304,23 @@ void CallService::makeCall(const QString &accountId,
   }
 }
 
-void CallService::answerCall(int callId) {
+bool CallService::offersVideo(int callId) const {
+  const auto call = m_activeCalls.value(callId);
+  if (!call || !videoAvailable())
+    return false;
+  try {
+    return call->getInfo().remVideoCount > 0;
+  } catch (Error &) {
+    return false;
+  }
+}
+
+void CallService::answerCall(int callId, bool video) {
   if (m_activeCalls.contains(callId)) {
-    // Answer with audio only; video is sent only on calls the user starts
     CallOpParam prm(true);
     prm.opt.textCount = 0; // no real-time text line; PJSIP offers one by default
     prm.opt.audioCount = 1;
-    prm.opt.videoCount = 0;
+    prm.opt.videoCount = (video && offersVideo(callId)) ? 1 : 0;
     prm.statusCode = PJSIP_SC_OK;
     holdOthers(callId);
     try {

@@ -216,6 +216,12 @@ ApplicationWindow {
                 onClicked: callService.answerCall(callId)
             }
             PillButton {
+                visible: inCallWindow.ringing && callService.offersVideo(callId)
+                text: "Video"
+                kind: "success"
+                onClicked: callService.answerCall(callId, true)
+            }
+            PillButton {
                 Layout.fillWidth: true
                 text: inCallWindow.ringing ? "Decline" : "Hang up"
                 kind: "danger"

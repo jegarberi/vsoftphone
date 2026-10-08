@@ -140,6 +140,12 @@ Window {
                     text: "Answer"
                     onClicked: toast.answer()
                 }
+                PillButton {
+                    visible: callService.offersVideo(toast.callId)
+                    kind: "success"
+                    text: "Video"
+                    onClicked: callService.answerCall(toast.callId, true)
+                }
             }
         }
     }
