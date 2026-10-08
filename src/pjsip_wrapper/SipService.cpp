@@ -265,6 +265,14 @@ void SipService::setRport(bool enabled) {
   emit networkSettingsChanged();
 }
 
+// The header names are a global PJSIP switch; the session timer is part of
+// each account, which applyNetworkSettings() rebuilds
+void SipService::setCompactSip(bool enabled) {
+  setNet("compactSip", enabled, false);
+  if (m_endpoint)
+    pjsip_cfg()->endpt.use_compact_form = enabled ? PJ_TRUE : PJ_FALSE;
+}
+
 void SipService::applyNetworkSettings() {
   if (!m_networkDirty)
     return;
@@ -366,6 +374,7 @@ void SipService::init() {
     // Feature codes such as "#185439" go out as dialled. PJSIP would send
     // "%23185439", which is correct SIP but not understood by every server.
     pjsip_cfg()->endpt.allow_tx_hash_in_uri = PJ_TRUE;
+    pjsip_cfg()->endpt.use_compact_form = compactSip() ? PJ_TRUE : PJ_FALSE;
     pjsip_cfg()->endpt.disable_rport = rport() ? PJ_FALSE : PJ_TRUE;
 
     // Try to initialize with default audio, but catch errors
@@ -744,6 +753,8 @@ void SipService::applyAccount(const QString &id, const QVariantMap &config) {
     }
 
     // Only calls started with video carry a video stream (see answerCall)
+    if (compactSip()) // drops Session-Expires and Min-SE from every INVITE
+      cfg.callConfig.timerUse = PJSUA_SIP_TIMER_INACTIVE;
     cfg.videoConfig.autoShowIncoming = true;
     cfg.videoConfig.autoTransmitOutgoing = true;
     cfg.videoConfig.defaultCaptureDevice =

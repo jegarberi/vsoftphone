@@ -50,6 +50,7 @@ ApplicationWindow {
         sipService.turnPassword = turnPassField.text
         sipService.rport = rportCheck.checked
         sipService.mediaRport = mediaRportCheck.checked
+        sipService.compactSip = compactSipCheck.checked
         sipService.applyNetworkSettings()
     }
 
@@ -376,6 +377,15 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 text: "rport for media: advertise the address the server saw"
                 checked: sipService.mediaRport
+            }
+            CheckBox {
+                id: compactSipCheck
+                Layout.fillWidth: true
+                text: "Smaller SIP messages"
+                checked: sipService.compactSip
+            }
+            Hint {
+                text: "For calls that never connect because the INVITE is too big for one packet and gets fragmented: short header names and no session timer. Using TCP for the account, or turning off codecs you do not need, helps more."
             }
             CheckBox {
                 id: tlsVerifyCheck

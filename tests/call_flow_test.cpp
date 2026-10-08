@@ -686,6 +686,20 @@ int main(int argc, char *argv[]) {
     sip.applyNetworkSettings();
   }
 
+  // --- smaller SIP messages: a call still connects -------------------------
+  sip.setAutoAnswer(true);
+  sip.setCompactSip(true);
+  sip.applyNetworkSettings();
+  CHECK(pjsip_cfg()->endpt.use_compact_form);
+  CHECK(waitFor([&] { return statusOf(0) == "Registered"; }));
+  callService.makeCall(accountId, "tester");
+  CHECK(waitFor([] { return allConfirmed(2); }));
+  callService.hangupCall(callId(0));
+  CHECK(waitFor([] { return CallModel::instance().rowCount() == 0; }));
+  sip.setCompactSip(false);
+  sip.applyNetworkSettings();
+  CHECK(waitFor([&] { return statusOf(0) == "Registered"; }));
+
   // --- ICE: media negotiates candidates and comes up ------------------------
   sip.setAutoAnswer(true);
   account["ice"] = true;

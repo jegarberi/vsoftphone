@@ -64,6 +64,10 @@ class SipService : public QObject {
   // Advertise in SDP the address the server saw us at, learned through rport
   Q_PROPERTY(bool mediaRport READ mediaRport WRITE setMediaRport NOTIFY
                  networkSettingsChanged)
+  // Smaller SIP requests, for networks that lose an INVITE too big for one
+  // packet: one-letter header names and no session timer
+  Q_PROPERTY(bool compactSip READ compactSip WRITE setCompactSip NOTIFY
+                 networkSettingsChanged)
   Q_PROPERTY(bool acceptIpCalls READ acceptIpCalls WRITE setAcceptIpCalls
                  NOTIFY networkSettingsChanged)
 
@@ -120,6 +124,8 @@ public:
   void setRport(bool enabled);
   bool mediaRport() const { return net("mediaRport", false).toBool(); }
   void setMediaRport(bool v) { setNet("mediaRport", v, false); }
+  bool compactSip() const { return net("compactSip", false).toBool(); }
+  void setCompactSip(bool enabled);
   // Re-registers the active accounts if a network setting changed
   Q_INVOKABLE void applyNetworkSettings();
   // Something else the accounts are built from changed (the camera)
