@@ -35,22 +35,28 @@ ApplicationWindow {
         initialSpeakerVolume = hardwareService.speakerVolume
         initialMicVolume = hardwareService.micVolume
 
-        sipService.doNotDisturb = dndCheck.checked
-        sipService.autoAnswer = autoAnswerCheck.checked
-        sipService.tlsVerify = tlsVerifyCheck.checked
-        sipService.userAgent = userAgentField.text
-        sipService.acceptIpCalls = acceptIpCheck.checked
+        // Read every control before writing anything: a write makes the
+        // service announce a change, which sets the controls bound to it
+        // back to the saved values, and edits not yet written would be lost
+        var values = {
+            doNotDisturb: dndCheck.checked,
+            autoAnswer: autoAnswerCheck.checked,
+            tlsVerify: tlsVerifyCheck.checked,
+            userAgent: userAgentField.text,
+            acceptIpCalls: acceptIpCheck.checked,
+            stunEnabled: stunCheck.checked,
+            stunServer: stunField.text,
+            turnEnabled: turnCheck.checked,
+            turnServer: turnField.text,
+            turnUser: turnUserField.text,
+            turnPassword: turnPassField.text,
+            rport: rportCheck.checked,
+            mediaRport: mediaRportCheck.checked,
+            compactSip: compactSipCheck.checked,
+        }
         presenceService.status = presenceCombo.currentText
-
-        sipService.stunEnabled = stunCheck.checked
-        sipService.stunServer = stunField.text
-        sipService.turnEnabled = turnCheck.checked
-        sipService.turnServer = turnField.text
-        sipService.turnUser = turnUserField.text
-        sipService.turnPassword = turnPassField.text
-        sipService.rport = rportCheck.checked
-        sipService.mediaRport = mediaRportCheck.checked
-        sipService.compactSip = compactSipCheck.checked
+        for (var key in values)
+            sipService[key] = values[key]
         sipService.applyNetworkSettings()
     }
 
@@ -374,12 +380,14 @@ ApplicationWindow {
             }
             CheckBox {
                 id: mediaRportCheck
+                objectName: "mediaRportCheck" // for the test
                 Layout.fillWidth: true
                 text: "rport for media: advertise the address the server saw"
                 checked: sipService.mediaRport
             }
             CheckBox {
                 id: compactSipCheck
+                objectName: "compactSipCheck"
                 Layout.fillWidth: true
                 text: "Smaller SIP messages"
                 checked: sipService.compactSip

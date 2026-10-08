@@ -788,6 +788,20 @@ int main(int argc, char *argv[]) {
       window->setProperty("remoteParty", "tester");
       if (QString(file) == "SettingsWindow.qml")
         CHECK(QMetaObject::invokeMethod(window, "applySettings")); // Apply button
+      if (QObject *compact = window->findChild<QObject *>("compactSipCheck")) {
+        // Two boxes ticked together are both saved, and stay ticked
+        QObject *media = window->findChild<QObject *>("mediaRportCheck");
+        CHECK(media && !sip.compactSip() && !sip.mediaRport());
+        media->setProperty("checked", true);
+        compact->setProperty("checked", true);
+        CHECK(QMetaObject::invokeMethod(window, "applySettings"));
+        CHECK(sip.compactSip() && sip.mediaRport());
+        CHECK(compact->property("checked").toBool());
+        CHECK(media->property("checked").toBool());
+        sip.setCompactSip(false);
+        sip.setMediaRport(false);
+        sip.applyNetworkSettings();
+      }
 
       // Digits, * and # typed anywhere in the main window go to the dial pad
       if (QObject *display = window->findChild<QObject *>("dialDisplay")) {
