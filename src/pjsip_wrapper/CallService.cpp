@@ -150,6 +150,7 @@ void CallService::makeCall(const QString &accountId,
 
   auto call = std::make_shared<MyCall>(*acc);
   CallOpParam prm(true);
+  prm.opt.textCount = 0; // no real-time text line; PJSIP offers one by default
   prm.opt.audioCount = 1;
   prm.opt.videoCount = (video && videoAvailable()) ? 1 : 0;
 
@@ -174,6 +175,7 @@ void CallService::answerCall(int callId) {
   if (m_activeCalls.contains(callId)) {
     // Answer with audio only; video is sent only on calls the user starts
     CallOpParam prm(true);
+    prm.opt.textCount = 0; // no real-time text line; PJSIP offers one by default
     prm.opt.audioCount = 1;
     prm.opt.videoCount = 0;
     prm.statusCode = PJSIP_SC_OK;
@@ -343,6 +345,7 @@ void CallService::holdCall(int callId) {
   if (m_activeCalls.contains(callId)) {
     try {
       CallOpParam prm(true);
+      prm.opt.textCount = 0; // no real-time text line; PJSIP offers one by default
       m_activeCalls[callId]->setHold(prm);
       m_heldCalls.insert(callId);
       CallModel::instance().updateCallHold(callId, true);
@@ -356,6 +359,7 @@ void CallService::resumeCall(int callId) {
   if (m_activeCalls.contains(callId)) {
     try {
       CallOpParam prm(true);
+      prm.opt.textCount = 0; // no real-time text line; PJSIP offers one by default
       prm.opt.flag |= PJSUA_CALL_UNHOLD;
       m_activeCalls[callId]->reinvite(prm);
       m_heldCalls.remove(callId);
