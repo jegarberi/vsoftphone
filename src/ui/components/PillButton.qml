@@ -1,9 +1,10 @@
 import QtQuick
 import QtQuick.Controls
 
-// A button with a plain filled background, drawn the same by every renderer.
-// The style's own buttons take their colour from the window and can vanish
-// into it.
+// A button with a filled background of its own, drawn the same by every
+// renderer: a pill in the modern themes, the desktop's button in the classic
+// ones. The Material style's own buttons take their colour from the window
+// and can vanish into it.
 Button {
     id: control
 
@@ -27,19 +28,20 @@ Button {
     rightPadding: 14
     font.capitalization: Font.MixedCase
 
-    background: Rectangle {
-        radius: Theme.radius < 0 ? height / 2 : Theme.radius
-        color: control.fill
-        // Square buttons of the old desktops had an outline
-        border.width: Theme.radius === 0 ? 1 : 0
-        border.color: Theme.muted
-        opacity: !control.enabled ? 0.4 : control.down ? 0.7 : control.hovered ? 0.88 : 1
+    background: Bevel {
+        id: face
+        flatRadius: height / 2
+        // Quiet buttons are the desktop's plain grey ones
+        tint: Theme.look !== "" && control.kind === "tonal" ? "transparent" : control.fill
+        down: control.down
+        hovered: control.hovered
+        active: Theme.look !== "" && control.kind === "accent"
     }
 
     contentItem: Label {
         text: control.text
         font: control.font
-        color: control.ink
+        color: Theme.look === "" ? control.ink : face.ink
         opacity: control.enabled ? 1 : 0.5
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter

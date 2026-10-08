@@ -121,3 +121,9 @@ target_link_libraries(call_flow_test PRIVATE microsip_core)
 add_test(NAME call_flow COMMAND call_flow_test)
 # A hang must fail the run instead of blocking it
 set_tests_properties(call_flow PROPERTIES TIMEOUT 180)
+# The same again with the Classic control style, which a classic theme selects
+add_test(NAME call_flow_classic COMMAND call_flow_test)
+set_tests_properties(call_flow_classic PROPERTIES TIMEOUT 180
+    ENVIRONMENT "MICROSIP_TEST_THEME=Windows 95")
+# Both use the same ports and data directory
+set_tests_properties(call_flow call_flow_classic PROPERTIES RUN_SERIAL TRUE)

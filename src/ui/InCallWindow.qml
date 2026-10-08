@@ -1,6 +1,6 @@
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Controls.Material
+import QtQuick.Controls.Material as M
 import QtQuick.Layouts
 
 ApplicationWindow {
@@ -16,11 +16,11 @@ ApplicationWindow {
     transientParent: null
     color: Theme.background
 
-    Material.theme: Theme.dark ? Material.Dark : Material.Light
-    Material.background: Theme.background
-    Material.foreground: Theme.foreground
-    Material.accent: Theme.accent
-    Material.primary: Theme.accent
+    M.Material.theme: Theme.dark ? M.Material.Dark : M.Material.Light
+    M.Material.background: Theme.background
+    M.Material.foreground: Theme.foreground
+    M.Material.accent: Theme.accent
+    M.Material.primary: Theme.accent
 
     property int callId
     property string remoteUri

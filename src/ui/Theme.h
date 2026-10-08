@@ -24,8 +24,15 @@ class Theme : public QObject {
   Q_PROPERTY(QColor foreground READ foreground NOTIFY changed)
   Q_PROPERTY(QColor muted READ muted NOTIFY changed)
   Q_PROPERTY(QColor accent READ accent NOTIFY changed)
-  // Corner radius of buttons in pixels; -1 means fully rounded
-  Q_PROPERTY(int radius READ radius NOTIFY changed)
+  // The desktop whose controls the theme imitates: "win3", "win95", "win98",
+  // "xp", "win7" or "aqua"; empty for the modern themes
+  Q_PROPERTY(QString look READ look NOTIFY changed)
+  // True when the app started with the Classic control style, which draws
+  // those controls. The style is fixed at start, so after switching between
+  // a classic and a modern theme the two disagree until the next start.
+  Q_PROPERTY(bool classic READ classic CONSTANT)
+  // Text colour on the main window's header, which Classic draws as a title bar
+  Q_PROPERTY(QColor titleInk READ titleInk NOTIFY changed)
   Q_PROPERTY(QColor success READ success CONSTANT)
   Q_PROPERTY(QColor danger READ danger CONSTANT)
   Q_PROPERTY(QColor warning READ warning CONSTANT)
@@ -44,7 +51,7 @@ public:
     const char *foreground;
     const char *muted;
     const char *accent;
-    int radius;
+    const char *look; // which desktop the controls imitate; "" for none
   };
 
   static Theme &instance();
@@ -59,7 +66,12 @@ public:
   QColor foreground() const { return QColor(palette().foreground); }
   QColor muted() const { return QColor(palette().muted); }
   QColor accent() const { return QColor(palette().accent); }
-  int radius() const { return palette().radius; }
+  QString look() const { return QLatin1String(palette().look); }
+  bool classic() const { return m_classic; }
+  void setClassic(bool classic) { m_classic = classic; }
+  QColor titleInk() const;
+  // The first installed font of those the look's desktop used; "" for none
+  QString fontFamily() const;
   QColor success() const { return QColor("#22C55E"); }
   QColor danger() const { return QColor("#EF4444"); }
   QColor warning() const { return QColor("#F59E0B"); }
@@ -88,6 +100,7 @@ private:
   QString m_current = "System";
   double m_uiScale = 1.0;
   bool m_closeToTray = false;
+  bool m_classic = false;
 };
 
 #endif // THEME_H

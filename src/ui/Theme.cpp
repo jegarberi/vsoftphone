@@ -1,25 +1,25 @@
 #include "Theme.h"
 
+#include <QFontDatabase>
 #include <QGuiApplication>
 #include <QSettings>
 #include <QStyleHints>
 
-// radius: corner radius of buttons in pixels, -1 for fully rounded
-//   name               dark   background surface   foreground muted     accent    radius
+//   name               dark   background surface   foreground muted     accent     look
 static const Theme::Palette kPalettes[] = {
-    {"Light",           false, "#F7F8FA", "#FFFFFF", "#1F2328", "#6B7280", "#2563EB", -1},
-    {"Dark",            true,  "#1E1F22", "#2B2D31", "#E6E7E9", "#9AA0A6", "#5B9BFF", -1},
-    {"Midnight",        true,  "#000000", "#141414", "#EDEDED", "#8A8F98", "#22D3EE", -1},
-    {"Nord",            true,  "#2E3440", "#3B4252", "#ECEFF4", "#A7B1C2", "#88C0D0", -1},
-    {"Solarized Light", false, "#FDF6E3", "#EEE8D5", "#586E75", "#93A1A1", "#268BD2", -1},
-    {"Solarized Dark",  true,  "#002B36", "#073642", "#EEE8D5", "#839496", "#2AA198", -1},
-    // Colours of old desktops. Only colours and corners: no bevels or gradients
-    {"Windows 3.11",    false, "#FFFFFF", "#C0C0C0", "#000000", "#606060", "#000080", 0},
-    {"Windows 95",      false, "#C0C0C0", "#DFDFDF", "#000000", "#404040", "#000080", 0},
-    {"Windows 98",      false, "#D4D0C8", "#FFFFFF", "#000000", "#404040", "#0A246A", 0},
-    {"Windows XP",      false, "#ECE9D8", "#FFFFFF", "#000000", "#5F5F5F", "#245EDC", 3},
-    {"Windows 7",       false, "#F0F0F0", "#FFFFFF", "#1E1E1E", "#6D6D6D", "#2B7CD3", 3},
-    {"Mac OS X",        false, "#ECECEC", "#FFFFFF", "#000000", "#6E6E6E", "#2F7BF6", -1},
+    {"Light",           false, "#F7F8FA", "#FFFFFF", "#1F2328", "#6B7280", "#2563EB", ""},
+    {"Dark",            true,  "#1E1F22", "#2B2D31", "#E6E7E9", "#9AA0A6", "#5B9BFF", ""},
+    {"Midnight",        true,  "#000000", "#141414", "#EDEDED", "#8A8F98", "#22D3EE", ""},
+    {"Nord",            true,  "#2E3440", "#3B4252", "#ECEFF4", "#A7B1C2", "#88C0D0", ""},
+    {"Solarized Light", false, "#FDF6E3", "#EEE8D5", "#586E75", "#93A1A1", "#268BD2", ""},
+    {"Solarized Dark",  true,  "#002B36", "#073642", "#EEE8D5", "#839496", "#2AA198", ""},
+    // Old desktops. `look` picks how Bevel.qml and the Classic style draw them
+    {"Windows 3.11",    false, "#FFFFFF", "#C0C0C0", "#000000", "#606060", "#000080", "win3"},
+    {"Windows 95",      false, "#C0C0C0", "#DFDFDF", "#000000", "#404040", "#000080", "win95"},
+    {"Windows 98",      false, "#D4D0C8", "#FFFFFF", "#000000", "#404040", "#0A246A", "win98"},
+    {"Windows XP",      false, "#ECE9D8", "#FFFFFF", "#000000", "#5F5F5F", "#245EDC", "xp"},
+    {"Windows 7",       false, "#F0F0F0", "#FFFFFF", "#1E1E1E", "#6D6D6D", "#2B7CD3", "win7"},
+    {"Mac OS X",        false, "#ECECEC", "#FFFFFF", "#000000", "#6E6E6E", "#2F7BF6", "aqua"},
 };
 
 static QSettings settingsFile() {
@@ -59,6 +59,31 @@ const Theme::Palette &Theme::palette() const {
   dark = QGuiApplication::styleHints()->colorScheme() != Qt::ColorScheme::Light;
 #endif
   return kPalettes[dark ? 1 : 0];
+}
+
+QColor Theme::titleInk() const {
+  const QString l = look();
+  const bool darkBar = l == "win3" || l == "win95" || l == "win98" || l == "xp";
+  return m_classic && darkBar ? QColor(Qt::white) : foreground();
+}
+
+QString Theme::fontFamily() const {
+  const QString l = look();
+  // The originals where they are installed, then free fonts of similar shape
+  const QStringList wanted =
+      l.isEmpty()   ? QStringList()
+      : l == "xp"   ? QStringList{"Tahoma", "Verdana", "DejaVu Sans"}
+      : l == "win7" ? QStringList{"Segoe UI", "Selawik", "Noto Sans"}
+      : l == "aqua" ? QStringList{"Lucida Grande", "Lucida Sans Unicode",
+                                  "Helvetica Neue", "Helvetica", "Liberation Sans"}
+                    : QStringList{"Microsoft Sans Serif", "Tahoma", "Arial",
+                                  "Liberation Sans", "Helvetica"};
+  const QStringList installed = QFontDatabase::families();
+  for (const QString &family : wanted) {
+    if (installed.contains(family))
+      return family;
+  }
+  return {};
 }
 
 void Theme::setCurrent(const QString &name) {

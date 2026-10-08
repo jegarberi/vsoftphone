@@ -1,6 +1,5 @@
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Controls.Material
 import QtQuick.Layouts
 import MicrosipClone 1.0
 
@@ -70,7 +69,7 @@ Item {
                     x: row.mine ? row.width - width : 0
                     width: Math.min(row.width * 0.82, Math.max(body.implicitWidth, stamp.implicitWidth) + 20)
                     height: body.height + stamp.height + 14
-                    radius: 10
+                    radius: Theme.look === "" ? 10 : 0
                     color: row.failed ? Qt.rgba(Theme.danger.r, Theme.danger.g, Theme.danger.b, 0.22)
                          : row.mine ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.22)
                          : Theme.surface

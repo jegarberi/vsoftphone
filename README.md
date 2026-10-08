@@ -6,7 +6,8 @@ on Linux, with a cross-compiled Windows build.
 ## Features
 
 - Compact window with colour themes (System, Light, Dark, Midnight, Nord,
-  Solarized Light and Dark), interface zoom, and an option to keep running
+  Solarized Light and Dark) and classic desktop themes that also redraw the
+  controls (Windows 3.11, 95, 98, XP, 7 and Mac OS X), interface zoom, and an option to keep running
   in the system tray when the window is closed
 - Multiple SIP accounts over UDP, TCP or TLS (server certificate verified by
   default), with registration status

@@ -1,6 +1,6 @@
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Controls.Material
+import QtQuick.Controls.Material as M
 import QtQuick.Layouts
 import QtQuick.Window
 
@@ -26,10 +26,10 @@ Window {
     x: Screen.virtualX + Screen.desktopAvailableWidth - width - 24
     y: Screen.virtualY + Screen.desktopAvailableHeight - height - 24
 
-    Material.theme: Theme.dark ? Material.Dark : Material.Light
-    Material.background: Theme.surface
-    Material.foreground: Theme.foreground
-    Material.accent: Theme.accent
+    M.Material.theme: Theme.dark ? M.Material.Dark : M.Material.Light
+    M.Material.background: Theme.surface
+    M.Material.foreground: Theme.foreground
+    M.Material.accent: Theme.accent
 
     function answer() {
         // Answering holds any call already in progress (CallService does it);
@@ -79,7 +79,7 @@ Window {
 
     Rectangle {
         anchors.fill: parent
-        radius: 12
+        radius: Theme.look === "" ? 12 : 0 // the old desktops had square windows
         color: Theme.surface
         border.color: Theme.accent
         border.width: 1

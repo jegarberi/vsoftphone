@@ -11,6 +11,28 @@
         <file>ui/MessageView.qml</file>
         <file>ui/components/Avatar.qml</file>
         <file>ui/components/PillButton.qml</file>
+        <file>ui/components/Bevel.qml</file>
+        <file>Classic/Button.qml</file>
+        <file>Classic/CheckBox.qml</file>
+        <file>Classic/ComboBox.qml</file>
+        <file>Classic/Dialog.qml</file>
+        <file>Classic/DialogButtonBox.qml</file>
+        <file>Classic/ItemDelegate.qml</file>
+        <file>Classic/Label.qml</file>
+        <file>Classic/Pane.qml</file>
+        <file>Classic/Popup.qml</file>
+        <file>Classic/ScrollBar.qml</file>
+        <file>Classic/ScrollView.qml</file>
+        <file>Classic/Slider.qml</file>
+        <file>Classic/SpinBox.qml</file>
+        <file>Classic/Switch.qml</file>
+        <file>Classic/TabBar.qml</file>
+        <file>Classic/TabButton.qml</file>
+        <file>Classic/TextField.qml</file>
+        <file>Classic/ToolBar.qml</file>
+        <file>Classic/ToolButton.qml</file>
+        <file>Classic/ToolTip.qml</file>
+        <file>Classic/qmldir</file>
         <file>ui/qmldir</file>
         <file>ui/icon.png</file>
     </qresource>

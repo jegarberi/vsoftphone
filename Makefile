@@ -165,11 +165,13 @@ static-test: ## Run the call test from the Linux folder inside Ubuntu 22.04 (gli
 	@printf 'FROM ubuntu:22.04\nRUN apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends libasound2 libgl1 libegl1 libopengl0 libfontconfig1 libfreetype6 libxkbcommon0 libdbus-1-3 libglib2.0-0 && rm -rf /var/lib/apt/lists/*\n' \
 	  | docker build -q -t microsip-static-test - >/dev/null
 	docker run --rm -v $(CURDIR)/build-static/dist:/app:ro microsip-static-test \
-	  bash -c 'ldd --version | head -1 && timeout 300 /app/call_flow_test'
+	  bash -c 'ldd --version | head -1 && timeout 300 /app/call_flow_test \
+	    && MICROSIP_TEST_THEME="Windows 95" timeout 300 /app/call_flow_test'
 
 .PHONY: windows-test
 windows-test: ## Run the call test from the Windows folder under wine
 	cd build-windows/dist && WINEDEBUG=-all QT_QPA_PLATFORM=offscreen wine call_flow_test.exe
+	cd build-windows/dist && WINEDEBUG=-all QT_QPA_PLATFORM=offscreen MICROSIP_TEST_THEME="Windows 95" wine call_flow_test.exe
 
 .PHONY: static-clean
 static-clean: ## Remove build-static/, build-windows/ and build-macos/

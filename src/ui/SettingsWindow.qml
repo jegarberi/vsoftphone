@@ -1,6 +1,6 @@
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Controls.Material
+import QtQuick.Controls.Material as M
 import QtQuick.Layouts
 
 ApplicationWindow {
@@ -13,11 +13,11 @@ ApplicationWindow {
     visible: true
     color: Theme.background
 
-    Material.theme: Theme.dark ? Material.Dark : Material.Light
-    Material.background: Theme.background
-    Material.foreground: Theme.foreground
-    Material.accent: Theme.accent
-    Material.primary: Theme.accent
+    M.Material.theme: Theme.dark ? M.Material.Dark : M.Material.Light
+    M.Material.background: Theme.background
+    M.Material.foreground: Theme.foreground
+    M.Material.accent: Theme.accent
+    M.Material.primary: Theme.accent
 
     // Apply keeps the current values and stays open; Save also closes
     function applySettings() {
@@ -87,7 +87,7 @@ ApplicationWindow {
     }
 
     footer: Pane {
-        Material.background: Theme.surface
+        M.Material.background: Theme.surface
         padding: 8
         RowLayout {
             anchors.fill: parent
@@ -136,6 +136,10 @@ ApplicationWindow {
                     onActivated: Theme.current = currentText
                 }
             }
+            Hint {
+                visible: (Theme.look !== "") !== Theme.classic
+                text: "Colours change at once. The shape of the controls follows the next time the app starts."
+            }
             RowLayout {
                 Layout.fillWidth: true
                 Label { text: "Zoom " + scaleSlider.value.toFixed(2) + "×" }
@@ -151,6 +155,7 @@ ApplicationWindow {
             Hint { text: "Zoom takes effect the next time the app starts." }
             CheckBox {
                 id: trayCheck
+                Layout.fillWidth: true
                 text: "Keep running in the tray when the window is closed"
                 checked: Theme.closeToTray
             }
@@ -159,16 +164,19 @@ ApplicationWindow {
             Heading { text: "CALLS" }
             CheckBox {
                 id: dndCheck
+                Layout.fillWidth: true
                 text: "Do Not Disturb"
                 checked: sipService.doNotDisturb
             }
             CheckBox {
                 id: autoAnswerCheck
+                Layout.fillWidth: true
                 text: "Auto answer (when no other call is connected)"
                 checked: sipService.autoAnswer
             }
             CheckBox {
                 id: acceptIpCheck
+                Layout.fillWidth: true
                 text: "Accept direct IP calls"
                 checked: sipService.acceptIpCalls
             }
@@ -230,6 +238,7 @@ ApplicationWindow {
             }
             CheckBox {
                 id: ecCheckBox
+                Layout.fillWidth: true
                 text: "Echo cancellation"
                 checked: hardwareService.echoCancellation
             }
@@ -311,6 +320,7 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 CheckBox {
                     id: stunCheck
+                    Layout.fillWidth: true
                     text: "STUN"
                     checked: sipService.stunEnabled
                 }
@@ -326,6 +336,7 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 CheckBox {
                     id: turnCheck
+                    Layout.fillWidth: true
                     text: "TURN"
                     checked: sipService.turnEnabled
                 }
@@ -356,16 +367,19 @@ ApplicationWindow {
             }
             CheckBox {
                 id: rportCheck
+                Layout.fillWidth: true
                 text: "rport: ask servers to reply to our source port"
                 checked: sipService.rport
             }
             CheckBox {
                 id: mediaRportCheck
+                Layout.fillWidth: true
                 text: "rport for media: advertise the address the server saw"
                 checked: sipService.mediaRport
             }
             CheckBox {
                 id: tlsVerifyCheck
+                Layout.fillWidth: true
                 text: "Verify TLS server certificates"
                 checked: sipService.tlsVerify
             }

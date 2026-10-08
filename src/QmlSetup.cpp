@@ -1,5 +1,7 @@
 #include "QmlSetup.h"
 
+#include <QFont>
+#include <QGuiApplication>
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QQuickStyle>
@@ -19,11 +21,23 @@
 
 void setupQml(QQmlEngine &engine) {
   // One look on every platform: the Material style, in its compact desktop
-  // variant, coloured from Theme by each window.
+  // variant, coloured from Theme by each window. The themes that imitate an
+  // old desktop use our own Classic style (src/Classic) with that desktop's
+  // font. A style cannot be changed once controls exist, so it follows the
+  // theme the app starts with.
+  Theme &theme = Theme::instance();
+  const bool classic = !theme.look().isEmpty();
+  theme.setClassic(classic);
+  engine.addImportPath(":/"); // where the Classic module is
   if (qEnvironmentVariableIsEmpty("QT_QUICK_CONTROLS_MATERIAL_VARIANT"))
     qputenv("QT_QUICK_CONTROLS_MATERIAL_VARIANT", "Dense");
   if (qEnvironmentVariableIsEmpty("QT_QUICK_CONTROLS_STYLE"))
-    QQuickStyle::setStyle("Material");
+    QQuickStyle::setStyle(classic ? "Classic" : "Material");
+  if (classic && !theme.fontFamily().isEmpty()) {
+    QFont font = QGuiApplication::font();
+    font.setFamily(theme.fontFamily());
+    QGuiApplication::setFont(font);
+  }
 
   qmlRegisterType<HistoryModel>("MicrosipClone", 1, 0, "HistoryModel");
   qmlRegisterType<MessageModel>("MicrosipClone", 1, 0, "MessageModel");

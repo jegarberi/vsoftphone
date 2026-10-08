@@ -1,6 +1,6 @@
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Controls.Material
+import QtQuick.Controls.Material as M
 import QtQuick.Layouts
 import Qt.labs.platform as Platform
 
@@ -14,11 +14,11 @@ ApplicationWindow {
     title: qsTr("Microsip")
     color: Theme.background
 
-    Material.theme: Theme.dark ? Material.Dark : Material.Light
-    Material.background: Theme.background
-    Material.foreground: Theme.foreground
-    Material.accent: Theme.accent
-    Material.primary: Theme.accent
+    M.Material.theme: Theme.dark ? M.Material.Dark : M.Material.Light
+    M.Material.background: Theme.background
+    M.Material.foreground: Theme.foreground
+    M.Material.accent: Theme.accent
+    M.Material.primary: Theme.accent
 
     // --- Closing: quit, or keep running in the system tray -------------------
 
@@ -64,9 +64,9 @@ ApplicationWindow {
 
     header: ToolBar {
         Keys.onPressed: (event) => root.handleDialKey(event)
-        Material.primary: Theme.surface
-        Material.foreground: Theme.foreground
-        Material.elevation: 0
+        M.Material.primary: Theme.surface
+        M.Material.foreground: Theme.foreground
+        M.Material.elevation: 0
 
         RowLayout {
             anchors.fill: parent
@@ -88,6 +88,7 @@ ApplicationWindow {
             Label {
                 Layout.fillWidth: true
                 elide: Text.ElideRight
+                color: Theme.titleInk
                 text: accountModel.defaultAccountId === "" ? "No account"
                     : accountModel.defaultAccountId
                 ToolTip.visible: accountMouse.containsMouse
@@ -189,7 +190,7 @@ ApplicationWindow {
         objectName: "tabs" // found by the test when it takes screenshots
         Keys.onPressed: (event) => root.handleDialKey(event)
         position: TabBar.Footer
-        Material.background: Theme.surface
+        M.Material.background: Theme.surface
 
         Repeater {
             model: ["Dial", "Contacts", "History", "Chat", "Accounts"]

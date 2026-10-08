@@ -461,6 +461,12 @@ int main(int argc, char *argv[]) {
   sip.setAutoAnswer(true);
   callService.makeCall(accountId, "sip:tester");
   CHECK(waitFor([] { return allConfirmed(2); }));
+  {
+    // Audio only: no real-time text line, which PJSIP would add by default
+    pjsua_call_info ci;
+    CHECK(pjsua_call_get_info(callId(0), &ci) == PJ_SUCCESS);
+    CHECK(ci.media_cnt == 1);
+  }
   const int outgoing = callId(0);
   CHECK(waitFor([&] {
     return mediaStatus(outgoing) == PJSUA_CALL_MEDIA_ACTIVE;
@@ -738,10 +744,12 @@ int main(int argc, char *argv[]) {
   {
     qInstallMessageHandler(collectQmlWarnings);
     QQmlApplicationEngine engine;
-    setupQml(engine);
-    // MICROSIP_TEST_THEME=<name> picks the theme the screenshots are taken in
+    // MICROSIP_TEST_THEME=<name> picks the theme the windows are loaded and
+    // the screenshots taken in; it also decides the control style
     if (qEnvironmentVariableIsSet("MICROSIP_TEST_THEME"))
       Theme::instance().setCurrent(qEnvironmentVariable("MICROSIP_TEST_THEME"));
+    setupQml(engine);
+    CHECK(Theme::instance().classic() == !Theme::instance().look().isEmpty());
     for (const char *file :
          {"main.qml", "SettingsWindow.qml", "InCallWindow.qml",
           "IncomingCallToast.qml"}) {
