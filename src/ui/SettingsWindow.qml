@@ -33,6 +33,8 @@ ApplicationWindow {
         hardwareService.saveSettings()
         for (var i = 0; i < codecRepeater.count; i++)
             hardwareService.setCodecEnabled(codecRepeater.itemAt(i).text, codecRepeater.itemAt(i).checked)
+        for (i = 0; i < videoCodecRepeater.count; i++)
+            hardwareService.setVideoCodecEnabled(videoCodecRepeater.itemAt(i).text, videoCodecRepeater.itemAt(i).checked)
         // The volume sliders act at once; from here on Cancel keeps them
         initialSpeakerVolume = hardwareService.speakerVolume
         initialMicVolume = hardwareService.micVolume
@@ -370,6 +372,20 @@ ApplicationWindow {
                 Connections {
                     target: scroll.contentItem
                     function onContentYChanged() { if (previewArea.shown) previewArea.place() }
+                }
+            }
+            Label { text: "Video codecs"; visible: callService.videoAvailable }
+            Flow {
+                Layout.fillWidth: true
+                spacing: 0
+                visible: callService.videoAvailable
+                Repeater {
+                    id: videoCodecRepeater
+                    model: hardwareService.videoCodecs
+                    CheckBox {
+                        text: modelData
+                        checked: hardwareService.isVideoCodecEnabled(modelData)
+                    }
                 }
             }
             Hint {

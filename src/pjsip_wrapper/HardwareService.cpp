@@ -276,6 +276,21 @@ void HardwareService::applyCodecPriorities() {
     qWarning() << "Error configuring codecs:"
                << QString::fromStdString(err.info());
   }
+
+  // Video codecs keep PJSIP's own order; the ones turned off are left out.
+  // Throws where PJSIP was built without video.
+  m_disabledVideoCodecs = settings.value("video/disabledCodecs").toStringList();
+  try {
+    const CodecInfoVector2 codecs = m_endpoint->videoCodecEnum2();
+    for (const CodecInfo &codec : codecs) {
+      const QString id = QString::fromStdString(codec.codecId);
+      if (!m_videoCodecPriorities.contains(id))
+        m_videoCodecPriorities[id] = codec.priority ? codec.priority : 128;
+      if (m_disabledVideoCodecs.contains(id))
+        m_endpoint->videoCodecSetPriority(codec.codecId, 0);
+    }
+  } catch (Error &) {
+  }
 }
 
 QString HardwareService::videoSize() const {
@@ -340,6 +355,28 @@ void HardwareService::applyVideoFormat() {
   } catch (Error &err) {
     qWarning() << "Error setting the video format:"
                << QString::fromStdString(err.info());
+  }
+}
+
+bool HardwareService::isVideoCodecEnabled(const QString &codecId) const {
+  return !m_disabledVideoCodecs.contains(codecId);
+}
+
+void HardwareService::setVideoCodecEnabled(const QString &codecId,
+                                           bool enabled) {
+  if (!m_endpoint || enabled == isVideoCodecEnabled(codecId))
+    return;
+  try {
+    m_endpoint->videoCodecSetPriority(
+        codecId.toStdString(),
+        enabled ? m_videoCodecPriorities.value(codecId, 128) : 0);
+    if (enabled)
+      m_disabledVideoCodecs.removeAll(codecId);
+    else
+      m_disabledVideoCodecs.append(codecId);
+    QSettings().setValue("video/disabledCodecs", m_disabledVideoCodecs);
+  } catch (Error &err) {
+    qWarning() << "Error changing codec:" << QString::fromStdString(err.info());
   }
 }
 

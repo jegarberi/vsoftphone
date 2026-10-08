@@ -1,6 +1,7 @@
 #ifndef HARDWARESERVICE_H
 #define HARDWARESERVICE_H
 
+#include <QMap>
 #include <QObject>
 #include <map>
 #include <QStringList>
@@ -69,6 +70,8 @@ public:
 
   Q_INVOKABLE bool isCodecEnabled(const QString &codecId) const;
   Q_INVOKABLE void setCodecEnabled(const QString &codecId, bool enabled);
+  Q_INVOKABLE bool isVideoCodecEnabled(const QString &codecId) const;
+  Q_INVOKABLE void setVideoCodecEnabled(const QString &codecId, bool enabled);
   void applyCodecPriorities();
 
   float speakerVolume() const;
@@ -123,6 +126,9 @@ private:
   // What each video codec was set to before the user chose a format
   std::map<std::string, pj::VidCodecParam> m_videoCodecDefaults;
   QStringList m_disabledCodecs;
+  QStringList m_disabledVideoCodecs;
+  // The video codecs' own order of preference, to give back on enabling
+  QMap<QString, int> m_videoCodecPriorities;
 };
 
 #endif // HARDWARESERVICE_H

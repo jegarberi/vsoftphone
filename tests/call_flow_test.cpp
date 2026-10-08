@@ -590,6 +590,20 @@ int main(int argc, char *argv[]) {
     CHECK(sent().width == 320 && sent().height == 240 && sent().fpsNum == 10);
     hardware.setVideoFormat("", 0);
     CHECK(sent().width == defaultWidth);
+    // A video codec turned off in Settings is no longer offered
+    const QString first = hardware.videoCodecs().value(0);
+    const auto priority = [&] {
+      for (const pj::CodecInfo &info : pj::Endpoint::instance().videoCodecEnum2()) {
+        if (info.codecId == first.toStdString())
+          return int(info.priority);
+      }
+      return -1;
+    };
+    const int before = priority();
+    hardware.setVideoCodecEnabled(first, false);
+    CHECK(priority() == 0 && !hardware.isVideoCodecEnabled(first));
+    hardware.setVideoCodecEnabled(first, true);
+    CHECK(priority() == before);
   }
 
   // --- a ringing call says whether it asks for video, and can be answered
