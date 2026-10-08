@@ -64,6 +64,10 @@ class SipService : public QObject {
   // Advertise in SDP the address the server saw us at, learned through rport
   Q_PROPERTY(bool mediaRport READ mediaRport WRITE setMediaRport NOTIFY
                  networkSettingsChanged)
+  // Media only through the TURN relay, for networks (carrier-grade NAT)
+  // that let no audio in directly. Does nothing without a TURN server.
+  Q_PROPERTY(bool forceRelay READ forceRelay WRITE setForceRelay NOTIFY
+                 networkSettingsChanged)
   // Smaller SIP requests, for networks that lose an INVITE too big for one
   // packet: one-letter header names and no session timer
   Q_PROPERTY(bool compactSip READ compactSip WRITE setCompactSip NOTIFY
@@ -124,6 +128,8 @@ public:
   void setRport(bool enabled);
   bool mediaRport() const { return net("mediaRport", false).toBool(); }
   void setMediaRport(bool v) { setNet("mediaRport", v, false); }
+  bool forceRelay() const { return net("forceRelay", false).toBool(); }
+  void setForceRelay(bool v) { setNet("forceRelay", v, false); }
   bool compactSip() const { return net("compactSip", false).toBool(); }
   void setCompactSip(bool enabled);
   // Re-registers the active accounts if a network setting changed

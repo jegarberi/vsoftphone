@@ -696,6 +696,13 @@ void SipService::applyAccount(const QString &id, const QVariantMap &config) {
     cfg.natConfig.mediaStunUse =
         enableStun ? PJSUA_STUN_USE_DEFAULT : PJSUA_STUN_USE_DISABLED;
 
+    // Relay only: with no host and no STUN-mapped candidates to offer, the
+    // relay's address is the one in the SDP, also for servers without ICE
+    if (forceRelay() && !turn.isEmpty()) {
+      cfg.natConfig.iceMaxHostCands = 0;
+      cfg.natConfig.mediaStunUse = PJSUA_STUN_USE_DISABLED;
+    }
+
     // PJSIP has one STUN server list: every server an active account uses
     QSet<QString> activeStunServers;
     const QList<AccountRecord> records = StorageService::instance().getAccounts();

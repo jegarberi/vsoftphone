@@ -712,7 +712,7 @@ int main(int argc, char *argv[]) {
 
   // --- TURN: with direct media impossible, audio flows through the relay ----
   // Needs a TURN server, so it only runs when one is named, e.g. PJSIP's own
-  // pjturn-srv:  MICROSIP_TEST_TURN=127.0.0.1:3478 (user/password 100/100)
+  // pjturn-srv:  MICROSIP_TEST_TURN=127.0.0.1:34780 (user/password 100/100)
   const QString turnServer = qEnvironmentVariable("MICROSIP_TEST_TURN");
   if (!turnServer.isEmpty()) {
     // The account names no TURN server, so it takes the global one, and
@@ -722,18 +722,11 @@ int main(int argc, char *argv[]) {
     sip.setTurnServer(turnServer);
     sip.setTurnUser(qEnvironmentVariable("MICROSIP_TEST_TURN_USER", "100"));
     sip.setTurnPassword(qEnvironmentVariable("MICROSIP_TEST_TURN_PASS", "100"));
+    // Relay only: no host candidates are offered, leaving it the only path
+    sip.setForceRelay(true);
     sip.setTurnEnabled(true);
     sip.applyNetworkSettings();
-
-    // Offer no host candidates, leaving the relay as the only path
-    const pjsua_acc_id acc = sip.getAccount(accountId)->getId();
-    pj_pool_t *pool = pjsua_pool_create("turn-test", 1000, 1000);
-    pjsua_acc_config accCfg;
-    CHECK(pjsua_acc_get_config(acc, pool, &accCfg) == PJ_SUCCESS);
-    accCfg.ice_cfg_use = PJSUA_ICE_CONFIG_USE_CUSTOM;
-    accCfg.ice_cfg.ice_max_host_cands = 0;
-    CHECK(pjsua_acc_modify(acc, &accCfg) == PJ_SUCCESS);
-    pj_pool_release(pool);
+    CHECK(waitFor([&] { return statusOf(0) == "Registered"; }));
 
     callService.makeCall(accountId, "tester");
     CHECK(waitFor([] { return allConfirmed(2); }, 20000));
@@ -749,6 +742,7 @@ int main(int argc, char *argv[]) {
     }));
     callService.hangupCall(relayed);
     CHECK(waitFor([] { return CallModel::instance().rowCount() == 0; }));
+    sip.setForceRelay(false);
     sip.setTurnEnabled(false);
     sip.applyNetworkSettings();
     std::puts("call_flow_test: TURN relay verified");

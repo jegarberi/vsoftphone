@@ -52,6 +52,7 @@ ApplicationWindow {
             turnPassword: turnPassField.text,
             rport: rportCheck.checked,
             mediaRport: mediaRportCheck.checked,
+            forceRelay: forceRelayCheck.checked,
             compactSip: compactSipCheck.checked,
         }
         presenceService.status = presenceCombo.currentText
@@ -371,6 +372,15 @@ ApplicationWindow {
                     echoMode: TextInput.Password
                     text: sipService.turnPassword
                 }
+            }
+            CheckBox {
+                id: forceRelayCheck
+                Layout.fillWidth: true
+                text: "Always send media through the TURN relay"
+                checked: sipService.forceRelay
+            }
+            Hint {
+                text: "For networks where audio only goes one way, such as behind a provider's shared address (CGNAT). Needs a TURN server, here or in the account."
             }
             CheckBox {
                 id: rportCheck
