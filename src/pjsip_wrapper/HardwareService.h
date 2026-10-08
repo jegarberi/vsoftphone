@@ -2,6 +2,7 @@
 #define HARDWARESERVICE_H
 
 #include <QObject>
+#include <map>
 #include <QStringList>
 #include <QVariantMap>
 #include <pjsua2.hpp>
@@ -49,6 +50,12 @@ public:
   // PJSIP's window for the running preview, or -1
   int previewWindowId() const;
   Q_INVOKABLE void setVideoDevice(int index);
+  // The picture sent in video calls: "640x480" and frames per second. An
+  // empty size or 0 keeps the codec's own. Used from the next call on.
+  Q_INVOKABLE QString videoSize() const;
+  Q_INVOKABLE int videoFps() const;
+  Q_INVOKABLE void setVideoFormat(const QString &size, int fps);
+  void applyVideoFormat();
   // PJSIP's id of the chosen camera, or its "default camera" id
   int selectedVideoDevice() const;
 
@@ -113,6 +120,8 @@ private:
   QList<int> m_videoDeviceIndices;
   QStringList m_audioCodecs;
   QStringList m_videoCodecs;
+  // What each video codec was set to before the user chose a format
+  std::map<std::string, pj::VidCodecParam> m_videoCodecDefaults;
   QStringList m_disabledCodecs;
 };
 

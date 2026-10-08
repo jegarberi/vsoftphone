@@ -578,6 +578,20 @@ int main(int argc, char *argv[]) {
   CHECK(historyCount("Incoming") == 2); // the two answered calls above
   sip.setDoNotDisturb(false);
 
+  // --- the picture size and frame rate chosen in Settings reach the codecs --
+  if (callService.videoAvailable()) {
+    HardwareService &hardware = HardwareService::instance();
+    const std::string codec = hardware.videoCodecs().value(0).toStdString();
+    const auto sent = [&] {
+      return pj::Endpoint::instance().getVideoCodecParam(codec).encFmt;
+    };
+    const unsigned defaultWidth = sent().width;
+    hardware.setVideoFormat("320x240", 10);
+    CHECK(sent().width == 320 && sent().height == 240 && sent().fpsNum == 10);
+    hardware.setVideoFormat("", 0);
+    CHECK(sent().width == defaultWidth);
+  }
+
   // --- a ringing call says whether it asks for video, and can be answered
   // with it ------------------------------------------------------------------
   callService.makeCall(accountId, "tester");

@@ -47,6 +47,7 @@ void HardwareService::init(pj::Endpoint *endpoint) {
   m_endpoint = endpoint;
   refreshDevices();
   restoreSettings();
+  applyVideoFormat();
 }
 
 // Devices are matched by name: their indices change as hardware comes and goes
@@ -273,6 +274,71 @@ void HardwareService::applyCodecPriorities() {
     }
   } catch (Error &err) {
     qWarning() << "Error configuring codecs:"
+               << QString::fromStdString(err.info());
+  }
+}
+
+QString HardwareService::videoSize() const {
+  return QSettings().value("video/size").toString();
+}
+
+int HardwareService::videoFps() const {
+  return QSettings().value("video/fps", 0).toInt();
+}
+
+void HardwareService::setVideoFormat(const QString &size, int fps) {
+  QSettings().setValue("video/size", size);
+  QSettings().setValue("video/fps", fps);
+  applyVideoFormat();
+}
+
+// Sets every video codec to send the chosen picture size and frame rate. A
+// smaller, slower picture is what helps a call that lags.
+void HardwareService::applyVideoFormat() {
+  if (!m_endpoint)
+    return;
+  const QStringList size = videoSize().split('x');
+  const int width = size.value(0).toInt(), height = size.value(1).toInt();
+  const int fps = videoFps();
+  try {
+    const CodecInfoVector2 codecs = m_endpoint->videoCodecEnum2();
+    for (const CodecInfo &codec : codecs) {
+      auto original = m_videoCodecDefaults.find(codec.codecId);
+      if (original == m_videoCodecDefaults.end())
+        original = m_videoCodecDefaults
+                       .emplace(codec.codecId,
+                                m_endpoint->getVideoCodecParam(codec.codecId))
+                       .first;
+      VidCodecParam param = original->second;
+      if (width > 0 && height > 0) {
+        param.encFmt.width = width;
+        param.encFmt.height = height;
+      }
+      if (fps > 0) {
+        param.encFmt.fpsNum = fps;
+        param.encFmt.fpsDenum = 1;
+      }
+      if ((width > 0 && height > 0) || fps > 0) {
+        // About a tenth of a bit per pixel, which is what the codecs' own
+        // settings work out to
+        const double bps = 0.1 * param.encFmt.width * param.encFmt.height *
+                           param.encFmt.fpsNum / param.encFmt.fpsDenum;
+        param.encFmt.avgBps = qBound(96000, int(bps), 4000000);
+        param.encFmt.maxBps = param.encFmt.avgBps * 3 / 2;
+      }
+      // H.264 states the largest picture it takes as a "level"; the default
+      // (3.0) stops below 720p, and the other side would not send more
+      // than it is told we accept
+      if (width * height > 720 * 576) {
+        for (CodecFmtp &fmtp : param.decFmtp) {
+          if (fmtp.name == "profile-level-id" && fmtp.val.size() == 6)
+            fmtp.val.replace(4, 2, "1f");
+        }
+      }
+      m_endpoint->setVideoCodecParam(codec.codecId, param);
+    }
+  } catch (Error &err) {
+    qWarning() << "Error setting the video format:"
                << QString::fromStdString(err.info());
   }
 }

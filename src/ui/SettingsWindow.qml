@@ -28,6 +28,8 @@ ApplicationWindow {
         hardwareService.setAudioDevice(micDevCombo.currentIndex, speakerDevCombo.currentIndex)
         hardwareService.echoCancellation = ecCheckBox.checked
         hardwareService.setVideoDevice(cameraDevCombo.currentIndex)
+        hardwareService.setVideoFormat(videoSizeCombo.currentIndex > 0 ? videoSizeCombo.currentText : "",
+                                       videoFpsCombo.currentIndex > 0 ? parseInt(videoFpsCombo.currentText) : 0)
         hardwareService.saveSettings()
         for (var i = 0; i < codecRepeater.count; i++)
             hardwareService.setCodecEnabled(codecRepeater.itemAt(i).text, codecRepeater.itemAt(i).checked)
@@ -308,6 +310,26 @@ ApplicationWindow {
                 currentIndex: hardwareService.videoIndex
                 // A running preview follows the selection
                 onActivated: if (hardwareService.videoPreviewActive) hardwareService.startVideoPreview(currentIndex)
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                visible: callService.videoAvailable
+                Label { text: "Picture sent" }
+                ComboBox {
+                    id: videoSizeCombo
+                    Layout.fillWidth: true
+                    model: ["Default", "176x144", "320x240", "352x288", "640x480", "1280x720"]
+                    currentIndex: Math.max(0, model.indexOf(hardwareService.videoSize()))
+                }
+                ComboBox {
+                    id: videoFpsCombo
+                    model: ["Default", "5 fps", "10 fps", "15 fps", "20 fps", "30 fps"]
+                    currentIndex: Math.max(0, model.indexOf(hardwareService.videoFps() + " fps"))
+                }
+            }
+            Hint {
+                visible: callService.videoAvailable
+                text: "A smaller picture and fewer frames per second make a video call that lags keep up. Used from the next call; what you receive is set on the other side."
             }
             RowLayout {
                 Layout.fillWidth: true
