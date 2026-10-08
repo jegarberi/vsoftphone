@@ -168,6 +168,9 @@ void CallService::makeCall(const QString &accountId,
     m_lastCallId = call->getId();
     m_lastRemoteUri = destination;
     CallModel::instance().addCall(m_lastCallId, destination);
+    // In progress from this moment, not when PJSIP reports back: a second
+    // call asked for straight away has to be refused
+    CallModel::instance().updateCallState(m_lastCallId, "CALLING");
     emit outgoingCall(m_lastCallId, destination);
   } catch (Error &err) {
     qCritical() << "Error making call:" << QString::fromStdString(err.info());

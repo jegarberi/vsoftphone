@@ -821,11 +821,21 @@ int main(int argc, char *argv[]) {
 
         // An incoming call raises a toast; answering from it connects the
         // call and opens its window next to the caller's
+        // The call is started with Enter in the number field, pressed twice:
+        // exactly one call goes out
         sip.setAutoAnswer(false);
-        callService.makeCall(accountId, "tester");
+        display->setProperty("text", "tester");
+        CHECK(QMetaObject::invokeMethod(display, "forceActiveFocus"));
+        for (int i = 0; i < 2; ++i) {
+          QKeyEvent enter(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
+          QCoreApplication::sendEvent(window, &enter);
+        }
+        display->setProperty("text", "");
         CHECK(waitFor([&] {
           return window->findChild<QObject *>("incomingToast") != nullptr;
         }));
+        pump(300);
+        CHECK(CallModel::instance().rowCount() == 2); // the call and its far end
         CHECK(window->findChildren<QObject *>("callWindow").size() == 1);
         CHECK(QMetaObject::invokeMethod(
             window->findChild<QObject *>("incomingToast"), "answer"));

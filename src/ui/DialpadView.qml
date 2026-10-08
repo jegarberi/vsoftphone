@@ -42,7 +42,8 @@ Item {
             font.pixelSize: 22
             placeholderText: "Number, user@host or IP"
             inputMethodHints: Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase
-            onAccepted: root.call(false)
+            // Enter is handled by the window (see main.qml), which also gets
+            // it from here: calling on `accepted` too would call twice
         }
 
         GridLayout {
