@@ -363,6 +363,9 @@ void SipService::init() {
 
     // Disable automatic switching from UDP to TCP
     pjsip_cfg()->endpt.disable_tcp_switch = PJ_TRUE;
+    // Feature codes such as "#185439" go out as dialled. PJSIP would send
+    // "%23185439", which is correct SIP but not understood by every server.
+    pjsip_cfg()->endpt.allow_tx_hash_in_uri = PJ_TRUE;
     pjsip_cfg()->endpt.disable_rport = rport() ? PJ_FALSE : PJ_TRUE;
 
     // Try to initialize with default audio, but catch errors

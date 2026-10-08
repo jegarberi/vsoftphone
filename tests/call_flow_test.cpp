@@ -342,6 +342,17 @@ int main(int argc, char *argv[]) {
   sip.setUserAgent("TestPhone/1.0\r\nX-Injected: 1");
   sip.init();
   CHECK(sip.endpoint());
+  {
+    // A dialled "#" stays a "#" in the request, not "%23"
+    pj_pool_t *pool = pjsua_pool_create("uri", 512, 512);
+    char text[] = "sip:#185439@pbx.example.com";
+    pjsip_uri *uri = pjsip_parse_uri(pool, text, sizeof(text) - 1, 0);
+    CHECK(uri);
+    char out[64];
+    const int len = pjsip_uri_print(PJSIP_URI_IN_REQ_URI, uri, out, sizeof(out));
+    CHECK(len > 0 && std::string(out, len) == "sip:#185439@pbx.example.com");
+    pj_pool_release(pool);
+  }
   sip.endpoint()->audDevManager().setNullDev();
 
   pjsua_transport_info ti;
