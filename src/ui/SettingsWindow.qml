@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Controls.Material as M
 import QtQuick.Layouts
 import MicrosipClone 1.0
+import Qt.labs.platform as Platform
 
 ApplicationWindow {
     id: settingsWindow
@@ -32,6 +33,7 @@ ApplicationWindow {
         hardwareService.setVideoFormat(videoSizeCombo.currentIndex > 0 ? videoSizeCombo.currentText : "",
                                        videoFpsCombo.currentIndex > 0 ? parseInt(videoFpsCombo.currentText) : 0)
         hardwareService.saveSettings()
+        callService.holdMusic = holdMusicField.text
         for (var i = 0; i < codecRepeater.count; i++)
             hardwareService.setCodecEnabled(codecRepeater.itemAt(i).text, codecRepeater.itemAt(i).checked)
         for (i = 0; i < videoCodecRepeater.count; i++)
@@ -128,6 +130,13 @@ ApplicationWindow {
         }
     }
 
+    Platform.FileDialog {
+        id: holdMusicDialog
+        title: "Hold music"
+        nameFilters: ["WAV files (*.wav)"]
+        onAccepted: holdMusicField.text = decodeURIComponent(String(file).replace(/^file:\/\//, ""))
+    }
+
     ScrollView {
         id: scroll
         anchors.fill: parent
@@ -210,6 +219,23 @@ ApplicationWindow {
                     currentIndex: Math.max(0, model.indexOf(presenceService.status))
                 }
             }
+            RowLayout {
+                Layout.fillWidth: true
+                TextField {
+                    id: holdMusicField
+                    Layout.fillWidth: true
+                    placeholderText: "Hold music: a WAV file (optional)"
+                    text: callService.holdMusic
+                }
+                Button {
+                    flat: true
+                    text: "Browse"
+                    // Android has no file picker of this kind: type the path
+                    visible: Qt.platform.os !== "android"
+                    onClicked: holdMusicDialog.open()
+                }
+            }
+            Hint { text: "Played to the other side while a call is on hold: an uncompressed (16-bit PCM) WAV file. Left empty, nothing is sent on hold." }
             Button {
                 flat: true
                 text: "Open recordings folder"

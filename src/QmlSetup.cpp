@@ -43,6 +43,8 @@ void setupQml(QQmlEngine &engine) {
   qmlRegisterType<HistoryModel>("MicrosipClone", 1, 0, "HistoryModel");
   qmlRegisterType<MessageModel>("MicrosipClone", 1, 0, "MessageModel");
   qmlRegisterType<VideoView>("MicrosipClone", 1, 0, "VideoView");
+  VideoSink::instance(); // both follow the calls from now on
+  VideoSink::self();
 
   QQmlContext *ctx = engine.rootContext();
   ctx->setContextProperty("hardwareService", &HardwareService::instance());

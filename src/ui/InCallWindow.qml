@@ -125,6 +125,16 @@ ApplicationWindow {
             Layout.fillWidth: true
             Layout.fillHeight: true
             visible: inCallWindow.hasVideo && inCallWindow.callState !== "DISCONNECTED"
+
+            // Our own camera, in the corner
+            VideoView {
+                self: true
+                visible: live
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                width: parent.width * 0.28
+                height: parent.height * 0.28
+            }
         }
         Item {
             Layout.fillHeight: true

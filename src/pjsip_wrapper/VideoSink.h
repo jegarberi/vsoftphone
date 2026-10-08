@@ -7,6 +7,7 @@
 #include <QQuickPaintedItem>
 #include <QSize>
 #include <atomic>
+#include <pjmedia/port.h>
 
 // Receives the pictures of the video being shown, so that the interface can
 // draw them itself instead of PJSIP opening a window of its own: the other
@@ -17,7 +18,10 @@
 class VideoSink : public QObject {
   Q_OBJECT
 public:
+  // The other side of a video call, or else the Settings camera preview
   static VideoSink &instance();
+  // Our own camera, as the other side of a video call gets it
+  static VideoSink &self();
 
   // Looks for the video to show and follows it; cheap when nothing changed.
   // GUI thread.
@@ -32,8 +36,12 @@ signals:
   void frameChanged();
 
 private:
-  explicit VideoSink(QObject *parent = nullptr);
+  explicit VideoSink(bool self);
   void detach();
+  int findSource() const;
+  static pj_status_t putFrame(pjmedia_port *port, pjmedia_frame *frame);
+  static pj_status_t destroyPort(pjmedia_port *port);
+  const bool m_self;
 
   struct Port;
   Port *m_port = nullptr;
@@ -49,9 +57,23 @@ private:
 // Draws those pictures, whole and in their own proportions
 class VideoView : public QQuickPaintedItem {
   Q_OBJECT
+  // Our own camera instead of the other side's picture
+  Q_PROPERTY(bool self MEMBER m_self NOTIFY selfChanged)
+  // False while there is nothing to draw
+  Q_PROPERTY(bool live READ live NOTIFY liveChanged)
 public:
   explicit VideoView(QQuickItem *parent = nullptr);
   void paint(QPainter *painter) override;
+  bool live() const { return m_live; }
+
+signals:
+  void selfChanged();
+  void liveChanged();
+
+private:
+  VideoSink &sink() const;
+  bool m_self = false;
+  bool m_live = false;
 };
 
 #endif // VIDEOSINK_H

@@ -7,6 +7,8 @@
 #include <QDateTime>
 #include <QDebug>
 #include <QDir>
+#include <QSettings>
+#include <QFile>
 #include <QStandardPaths>
 
 using namespace pj;
@@ -73,6 +75,15 @@ void CallService::handleMediaState(int callId) {
     for (unsigned i = 0; i < ci.media.size(); i++) {
       if (ci.media[i].type == PJMEDIA_TYPE_AUDIO && call->getMedia(i)) {
         AudioMedia *aud_med = (AudioMedia *)call->getMedia(i);
+        // On hold the other side hears the hold music, if any, and never
+        // the microphone
+        if (m_heldCalls.contains(callId)) {
+          adm.getCaptureDevMedia().stopTransmit(*aud_med);
+          const auto music = m_holdPlayers.find(callId);
+          if (music != m_holdPlayers.end())
+            music->second->startTransmit(*aud_med);
+          continue;
+        }
         aud_med->startTransmit(adm.getPlaybackDevMedia());
         if (m_mutedCalls.contains(callId))
           adm.getCaptureDevMedia().stopTransmit(*aud_med);
@@ -179,6 +190,20 @@ void CallService::makeCall(const QString &accountId,
   }
 }
 
+QString CallService::holdMusic() const {
+  return QSettings().value("calls/holdMusic").toString();
+}
+
+void CallService::setHoldMusic(const QString &file) {
+  // A file picker hands over a URL
+  const QString path =
+      file.startsWith("file:") ? QUrl(file).toLocalFile() : file.trimmed();
+  if (path == holdMusic())
+    return;
+  QSettings().setValue("calls/holdMusic", path);
+  emit holdMusicChanged();
+}
+
 bool CallService::offersVideo(int callId) const {
   const auto call = m_activeCalls.value(callId);
   if (!call || !videoAvailable())
@@ -244,6 +269,7 @@ void CallService::removeCall(int callId) {
   m_heldCalls.remove(callId);
   m_outgoingCalls.remove(callId);
   m_recorders.erase(callId);
+  m_holdPlayers.erase(callId);
   setRinging(callId, false);
   CallModel::instance().removeCall(callId);
   // Queued: the call object above has to be gone before accounts are rebuilt
@@ -381,9 +407,29 @@ CallOpParam CallService::mediaDirection(int callId, pjmedia_dir dir) {
 void CallService::holdCall(int callId) {
   if (m_activeCalls.contains(callId)) {
     try {
-      // "inactive" rather than PJSIP's own hold ("sendonly"), which keeps
-      // sending silence for as long as the call is held
-      m_activeCalls[callId]->reinvite(mediaDirection(callId, PJMEDIA_DIR_NONE));
+      const QString music = holdMusic();
+      if (!music.isEmpty()) {
+        // PJSIP's own hold ("sendonly"): we keep sending, and what we send
+        // is the music (connected in handleMediaState)
+        try {
+          auto player = std::make_unique<AudioMediaPlayer>();
+          player->createPlayer(QFile::encodeName(music).toStdString());
+          m_holdPlayers[callId] = std::move(player);
+        } catch (Error &err) {
+          qWarning() << "Cannot play the hold music" << music << ":"
+                     << QString::fromStdString(err.info());
+        }
+      }
+      if (m_holdPlayers.count(callId)) {
+        CallOpParam prm(true);
+        prm.opt.textCount = 0;
+        m_activeCalls[callId]->setHold(prm);
+      } else {
+        // "inactive": with nothing to play, sendonly would send silence for
+        // as long as the call is held
+        m_activeCalls[callId]->reinvite(
+            mediaDirection(callId, PJMEDIA_DIR_NONE));
+      }
       m_heldCalls.insert(callId);
       CallModel::instance().updateCallHold(callId, true);
     } catch (Error &err) {
@@ -399,6 +445,7 @@ void CallService::resumeCall(int callId) {
           mediaDirection(callId, PJMEDIA_DIR_ENCODING_DECODING);
       prm.opt.flag |= PJSUA_CALL_UNHOLD;
       m_activeCalls[callId]->reinvite(prm);
+      m_holdPlayers.erase(callId);
       m_heldCalls.remove(callId);
       CallModel::instance().updateCallHold(callId, false);
     } catch (Error &err) {

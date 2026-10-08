@@ -5,32 +5,37 @@
 #include <QTimer>
 #include <pjsua-lib/pjsua.h>
 
-#if PJSUA_HAS_VIDEO
 // A sink in PJSIP's video bridge. The bridge converts whatever it is
 // connected to into this port's format and hands over one picture at a time.
 struct VideoSink::Port {
   pjmedia_port base; // base.port_data.pdata is the pool it lives in
+  VideoSink *owner;
 };
 
-static pj_status_t putFrame(pjmedia_port *, pjmedia_frame *frame) {
+pj_status_t VideoSink::putFrame(pjmedia_port *port, pjmedia_frame *frame) {
   if (frame->type == PJMEDIA_FRAME_TYPE_VIDEO && frame->buf && frame->size)
-    VideoSink::instance().receive(frame->buf, int(frame->size));
+    reinterpret_cast<Port *>(port)->owner->receive(frame->buf,
+                                                   int(frame->size));
   return PJ_SUCCESS;
 }
 
 // The bridge lets go of a port some time after it is asked to
-static pj_status_t destroyPort(pjmedia_port *port) {
+pj_status_t VideoSink::destroyPort(pjmedia_port *port) {
   pj_pool_release(static_cast<pj_pool_t *>(port->port_data.pdata));
   return PJ_SUCCESS;
 }
-#endif
 
 VideoSink &VideoSink::instance() {
-  static VideoSink sink;
+  static VideoSink sink(false);
   return sink;
 }
 
-VideoSink::VideoSink(QObject *parent) : QObject(parent) {
+VideoSink &VideoSink::self() {
+  static VideoSink sink(true);
+  return sink;
+}
+
+VideoSink::VideoSink(bool self) : m_self(self) {
   // ponytail: polled. The size of a call's picture is only known once the
   // first one is decoded, and can change later; PJSIP's media events would
   // say exactly when.
@@ -85,20 +90,54 @@ void VideoSink::detach() {
   emit frameChanged();
 }
 
-void VideoSink::refresh() {
+// Where in PJSIP's video bridge our pictures come from now, or -1
+int VideoSink::findSource() const {
+  int source = -1;
 #if PJSUA_HAS_VIDEO
-  if (pjsua_get_state() != PJSUA_STATE_RUNNING)
-    return;
   // A call's incoming video comes before the preview
-  int source = HardwareService::instance().previewConfPort();
+  if (!m_self)
+    source = HardwareService::instance().previewConfPort();
   pjsua_call_id calls[PJSUA_MAX_CALLS];
   unsigned count = PJ_ARRAY_SIZE(calls);
   pjsua_enum_calls(calls, &count);
   for (unsigned i = 0; i < count; ++i) {
-    const int port = pjsua_call_get_vid_conf_port(calls[i], PJMEDIA_DIR_DECODING);
-    if (port >= 0)
-      source = port;
+    pjsua_call_info info;
+    if (pjsua_call_get_info(calls[i], &info) != PJ_SUCCESS)
+      continue;
+    for (unsigned m = 0; m < info.media_cnt; ++m) {
+      if (info.media[m].type != PJMEDIA_TYPE_VIDEO ||
+          info.media[m].status != PJSUA_CALL_MEDIA_ACTIVE)
+        continue;
+      if (!m_self) {
+        if (info.media[m].stream.vid.dec_slot >= 0)
+          source = info.media[m].stream.vid.dec_slot;
+        continue;
+      }
+      // Our camera is whatever feeds this call's encoder. (PJSIP has no
+      // call for it: it only answers for a preview the app started.)
+      pjsua_conf_port_id ports[PJSUA_MAX_CONF_PORTS];
+      unsigned portCount = PJ_ARRAY_SIZE(ports);
+      pjsua_vid_conf_enum_ports(ports, &portCount);
+      for (unsigned p = 0; p < portCount; ++p) {
+        pjsua_vid_conf_port_info feeder;
+        if (pjsua_vid_conf_get_port_info(ports[p], &feeder) != PJ_SUCCESS)
+          continue;
+        for (unsigned l = 0; l < feeder.listener_cnt; ++l) {
+          if (feeder.listeners[l] == info.media[m].stream.vid.enc_slot)
+            source = ports[p];
+        }
+      }
+    }
   }
+#endif
+  return source;
+}
+
+void VideoSink::refresh() {
+#if PJSUA_HAS_VIDEO
+  if (pjsua_get_state() != PJSUA_STATE_RUNNING)
+    return;
+  int source = findSource();
   QSize size;
   pjsua_vid_conf_port_info info;
   if (source >= 0 && pjsua_vid_conf_get_port_info(source, &info) == PJ_SUCCESS) {
@@ -120,6 +159,7 @@ void VideoSink::refresh() {
   pj_pool_t *pool = pjsua_pool_create("videosink", 1024, 1024);
   auto *port = PJ_POOL_ZALLOC_T(pool, Port);
   port->base.port_data.pdata = pool;
+  port->owner = this;
   const auto *video =
       pjmedia_format_get_video_format_detail(&info.format, PJ_TRUE);
   pjmedia_format format;
@@ -156,12 +196,25 @@ void VideoSink::refresh() {
 }
 
 VideoView::VideoView(QQuickItem *parent) : QQuickPaintedItem(parent) {
-  connect(&VideoSink::instance(), &VideoSink::frameChanged, this,
-          [this] { update(); });
+  const auto follow = [this] {
+    const bool live = !sink().frame().isNull();
+    if (live != m_live) {
+      m_live = live;
+      emit liveChanged();
+    }
+    update();
+  };
+  connect(&VideoSink::instance(), &VideoSink::frameChanged, this, follow);
+  connect(&VideoSink::self(), &VideoSink::frameChanged, this, follow);
+  connect(this, &VideoView::selfChanged, this, follow);
+}
+
+VideoSink &VideoView::sink() const {
+  return m_self ? VideoSink::self() : VideoSink::instance();
 }
 
 void VideoView::paint(QPainter *painter) {
-  const QImage frame = VideoSink::instance().frame();
+  const QImage frame = sink().frame();
   if (frame.isNull())
     return;
   const QSizeF fitted =

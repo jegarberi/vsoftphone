@@ -4,6 +4,8 @@
 // Run: ctest --preset conan-release   (or build/Release/call_flow_test)
 
 #include <QDir>
+#include <cmath>
+#include <QDataStream>
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QKeyEvent>
@@ -543,6 +545,61 @@ int main(int argc, char *argv[]) {
   CHECK(waitFor([&] {
     return mediaStatus(outgoing) == PJSUA_CALL_MEDIA_ACTIVE;
   }));
+  // With hold music set, a held call is sent the music instead
+  {
+    // One second of a 440 Hz tone: 8 kHz, mono, 16-bit
+    const QString wav = QDir::temp().filePath("microsip-hold-test.wav");
+    QByteArray pcm;
+    for (int i = 0; i < 8000; ++i) {
+      const qint16 sample = qint16(8000 * std::sin(i * 2 * 3.14159265 * 440 / 8000));
+      pcm.append(reinterpret_cast<const char *>(&sample), 2);
+    }
+    QFile file(wav);
+    CHECK(file.open(QIODevice::WriteOnly));
+    QDataStream out(&file);
+    out.setByteOrder(QDataStream::LittleEndian);
+    file.write("RIFF"); out << quint32(36 + pcm.size());
+    file.write("WAVEfmt "); out << quint32(16) << quint16(1) << quint16(1)
+        << quint32(8000) << quint32(16000) << quint16(2) << quint16(16);
+    file.write("data"); out << quint32(pcm.size());
+    file.write(pcm);
+    file.close();
+
+    callService.setHoldMusic(wav);
+    callService.holdCall(outgoing);
+    CHECK(waitFor([&] {
+      return mediaStatus(outgoing) == PJSUA_CALL_MEDIA_LOCAL_HOLD;
+    }));
+    const auto sent = [&] {
+      pjsua_stream_stat stat;
+      return pjsua_call_get_stream_stat(outgoing, 0, &stat) == PJ_SUCCESS
+                 ? int(stat.rtcp.tx.pkt)
+                 : 0;
+    };
+    const int before = sent();
+    CHECK(waitFor([&] { return sent() > before + 20; }));
+    CHECK(!micReaches(outgoing));
+    // The music is what the call is connected to
+    pjsua_call_info held;
+    CHECK(pjsua_call_get_info(outgoing, &held) == PJ_SUCCESS);
+    bool musicReaches = false;
+    for (unsigned port = 1; port < pjsua_conf_get_max_ports(); ++port) {
+      pjsua_conf_port_info info;
+      if (pjsua_conf_get_port_info(port, &info) != PJ_SUCCESS)
+        continue;
+      for (unsigned l = 0; l < info.listener_cnt; ++l)
+        musicReaches = musicReaches ||
+                       (info.listeners[l] == held.media[0].stream.aud.conf_slot &&
+                        QByteArray(info.name.ptr, int(info.name.slen)).contains("hold-test"));
+    }
+    CHECK(musicReaches);
+    callService.resumeCall(outgoing);
+    CHECK(waitFor([&] {
+      return mediaStatus(outgoing) == PJSUA_CALL_MEDIA_ACTIVE;
+    }));
+    callService.setHoldMusic("");
+    QFile::remove(wav);
+  }
   CHECK(waitFor([&] { return micReaches(outgoing); }));
 
   CHECK(callService.toggleRecording(outgoing));
@@ -647,6 +704,9 @@ int main(int argc, char *argv[]) {
     const int before = VideoSink::instance().frameCount();
     CHECK(waitFor([&] { return VideoSink::instance().frameCount() > before + 3; }, 15000));
     CHECK(!VideoSink::instance().frame().isNull());
+    // ... and so is our own camera, for the corner of the call window
+    const int own = VideoSink::self().frameCount();
+    CHECK(waitFor([&] { return VideoSink::self().frameCount() > own + 3; }, 15000));
   }
   callService.hangupCall(callId(0));
   CHECK(waitFor([] { return CallModel::instance().rowCount() == 0; }));

@@ -25,9 +25,15 @@ class CallService : public QObject {
   Q_OBJECT
   // False when PJSIP was built without video, as in the portable build
   Q_PROPERTY(bool videoAvailable READ videoAvailable CONSTANT)
+  // A WAV file played to the other side while a call is on hold. Empty:
+  // nothing at all is sent on hold.
+  Q_PROPERTY(QString holdMusic READ holdMusic WRITE setHoldMusic NOTIFY
+                 holdMusicChanged)
 
 public:
   bool videoAvailable() const { return PJSUA_HAS_VIDEO; }
+  QString holdMusic() const;
+  void setHoldMusic(const QString &file);
 
   static CallService &instance();
 
@@ -65,6 +71,7 @@ public:
   QString lastRemoteUri() const { return m_lastRemoteUri; }
 
 signals:
+  void holdMusicChanged();
   void incomingCall(int callId, QString remoteUri);
   void outgoingCall(int callId, QString remoteUri);
   void callStateChanged(int callId, QString state, int status = 0,
@@ -88,6 +95,8 @@ private:
   QSet<int> m_heldCalls;
   QSet<int> m_outgoingCalls;
   std::map<int, std::unique_ptr<pj::AudioMediaRecorder>> m_recorders;
+  // What plays to each held call, when there is hold music
+  std::map<int, std::unique_ptr<pj::AudioMediaPlayer>> m_holdPlayers;
   std::unique_ptr<pj::ToneGenerator> m_ringTone;
 
   void setRinging(int callId, bool ringing);
