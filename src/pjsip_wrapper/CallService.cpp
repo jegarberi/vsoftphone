@@ -134,6 +134,11 @@ void CallService::makeCall(const QString &accountId,
   // An IP address as host is a direct call: it bypasses the account's
   // registrar and proxy and needs no account at all. Anything else goes
   // through the account, a bare user getting its domain ("user@domain").
+  // One call at a time: the one in progress has to be put on hold first
+  if (CallModel::instance().activeCallId() >= 0) {
+    emit callFailed(destination, "A call is in progress. Put it on hold first.");
+    return;
+  }
   QString rawDest = bareSipUri(destination);
   const bool ipCall = hasIpHost(rawDest);
   auto acc = ipCall ? SipService::instance().localAccount()
@@ -160,7 +165,6 @@ void CallService::makeCall(const QString &accountId,
     call->makeCall(dest.toStdString(), prm);
     addCall(call);
     m_outgoingCalls.insert(call->getId());
-    holdOthers(call->getId()); // only once the new call really started
     m_lastCallId = call->getId();
     m_lastRemoteUri = destination;
     CallModel::instance().addCall(m_lastCallId, destination);

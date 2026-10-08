@@ -19,9 +19,13 @@ Item {
     }
 
     // A number, user@host or an IP address; the service works out which
+    // While a call is in progress no other can be started: the Call button
+    // hangs it up instead, until it is put on hold
+    readonly property int activeCall: callModel.activeCallId
+
     function call(video) {
         var target = display.text.trim()
-        if (target !== "")
+        if (target !== "" && activeCall < 0)
             callService.makeCall(accountModel.defaultAccountId, target, video)
     }
 
@@ -104,17 +108,17 @@ Item {
 
             PillButton {
                 Layout.fillWidth: true
-                kind: "accent"
-                text: "Call"
-                enabled: display.text.trim() !== ""
-                onClicked: root.call(false)
+                kind: root.activeCall >= 0 ? "danger" : "accent"
+                text: root.activeCall >= 0 ? "Hang up" : "Call"
+                enabled: root.activeCall >= 0 || display.text.trim() !== ""
+                onClicked: root.activeCall >= 0 ? callService.hangupCall(root.activeCall) : root.call(false)
             }
 
             Button {
                 flat: true
                 text: "Video"
                 visible: callService.videoAvailable
-                enabled: display.text.trim() !== ""
+                enabled: display.text.trim() !== "" && root.activeCall < 0
                 onClicked: root.call(true)
             }
         }

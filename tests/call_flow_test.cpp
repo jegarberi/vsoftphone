@@ -899,14 +899,24 @@ int main(int argc, char *argv[]) {
     sip.setAcceptIpCalls(true);
   }
 
-  // --- starting a second call puts the first on hold ------------------------
+  // --- a second call can only be started once the first is on hold ---------
   sip.setAutoAnswer(true);
   callService.makeCall("", "sip:" + domain);
   CHECK(waitFor([] { return allConfirmed(2); }));
   CallModel &calls = CallModel::instance();
-  CHECK(!calls.data(calls.index(0), CallModel::IsHeldRole).toBool());
+  CHECK(calls.activeCallId() == callId(0));
+  int refused = 0;
+  const auto refusal = QObject::connect(
+      &callService, &CallService::callFailed, [&refused] { ++refused; });
   callService.makeCall("", "sip:" + domain);
-  CHECK(calls.data(calls.index(0), CallModel::IsHeldRole).toBool());
+  CHECK(refused == 1 && calls.rowCount() == 2);
+  // The call is to ourselves, so its far end is a call of ours too
+  callService.holdCall(callId(0));
+  callService.holdCall(callId(1));
+  CHECK(waitFor([&] { return calls.activeCallId() < 0; }));
+  callService.makeCall("", "sip:" + domain);
+  CHECK(refused == 1);
+  QObject::disconnect(refusal);
   CHECK(waitFor([] { return CallModel::instance().rowCount() == 4; }));
   pump(500);
   // Auto answer leaves the new call ringing while another is connected

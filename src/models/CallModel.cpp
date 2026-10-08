@@ -56,6 +56,7 @@ void CallModel::addCall(int id, const QString &remoteUri) {
   beginInsertRows(QModelIndex(), m_calls.count(), m_calls.count());
   m_calls.append({id, remoteUri, "INCOMING", false, false, false, 0, ""});
   endInsertRows();
+  emit callsChanged();
 }
 
 void CallModel::updateCallState(int id, const QString &state, int status,
@@ -66,6 +67,7 @@ void CallModel::updateCallState(int id, const QString &state, int status,
       m_calls[i].lastStatus = status;
       m_calls[i].lastReason = reason;
       emit dataChanged(index(i), index(i), {StateRole, StatusRole, ReasonRole});
+      emit callsChanged();
       break;
     }
   }
@@ -76,6 +78,7 @@ void CallModel::updateCallMedia(int id, bool hasVideo) {
     if (m_calls[i].id == id) {
       m_calls[i].hasVideo = hasVideo;
       emit dataChanged(index(i), index(i), {HasVideoRole});
+      emit callsChanged();
       break;
     }
   }
@@ -86,6 +89,7 @@ void CallModel::updateCallHold(int id, bool isHeld) {
     if (m_calls[i].id == id) {
       m_calls[i].isHeld = isHeld;
       emit dataChanged(index(i), index(i), {IsHeldRole});
+      emit callsChanged();
       break;
     }
   }
@@ -96,6 +100,7 @@ void CallModel::updateCallConference(int id, bool isInConference) {
     if (m_calls[i].id == id) {
       m_calls[i].isInConference = isInConference;
       emit dataChanged(index(i), index(i), {IsInConferenceRole});
+      emit callsChanged();
       break;
     }
   }
@@ -107,7 +112,16 @@ void CallModel::removeCall(int id) {
       beginRemoveRows(QModelIndex(), i, i);
       m_calls.removeAt(i);
       endRemoveRows();
+      emit callsChanged();
       break;
     }
   }
+}
+
+int CallModel::activeCallId() const {
+  for (const CallData &call : m_calls) {
+    if (!call.isHeld && call.state != "DISCONNECTED" && call.state != "INCOMING")
+      return call.id;
+  }
+  return -1;
 }
