@@ -7,6 +7,7 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.media.AudioDeviceCallback;
 import android.media.AudioDeviceInfo;
 import android.media.AudioManager;
 import android.net.wifi.WifiManager;
@@ -52,13 +53,53 @@ public class PhoneService extends Service {
             .build());
     }
 
+    private static boolean calling;
+    private static AudioDeviceCallback bluetoothWatcher;
+
     // Call audio. Android only routes it to the earpiece, a headset or the
-    // loudspeaker while the phone is in "communication" mode.
+    // loudspeaker while the phone is in "communication" mode. Called on every
+    // call state change, so the call's start and end are acted on once.
     public static void inCall(Context context, boolean active) {
         AudioManager audio = (AudioManager) context.getSystemService(AUDIO_SERVICE);
         audio.setMode(active ? AudioManager.MODE_IN_COMMUNICATION : AudioManager.MODE_NORMAL);
         if (!active)
             setAudioOutput(context, "");
+        if (active == calling)
+            return;
+        calling = active;
+        if (active) {
+            // Pauses music and videos in other apps for the length of the call
+            audio.requestAudioFocus(null, AudioManager.STREAM_VOICE_CALL,
+                AudioManager.AUDIOFOCUS_GAIN_TRANSIENT);
+            // Fires at once for the devices already there, then for each one
+            // connected during the call
+            if (Build.VERSION.SDK_INT >= 31)
+                audio.registerAudioDeviceCallback(bluetoothWatcher(context), null);
+        } else {
+            if (bluetoothWatcher != null)
+                audio.unregisterAudioDeviceCallback(bluetoothWatcher);
+            audio.abandonAudioFocus(null);
+        }
+    }
+
+    // A Bluetooth headset becomes the call's output as soon as it is there;
+    // when it goes, Android falls back to the earpiece on its own
+    private static AudioDeviceCallback bluetoothWatcher(Context context) {
+        if (bluetoothWatcher == null) {
+            final Context app = context.getApplicationContext();
+            bluetoothWatcher = new AudioDeviceCallback() {
+                @Override
+                public void onAudioDevicesAdded(AudioDeviceInfo[] added) {
+                    for (AudioDeviceInfo device : added) {
+                        if ("Bluetooth".equals(outputName(device))) {
+                            setAudioOutput(app, "Bluetooth");
+                            return;
+                        }
+                    }
+                }
+            };
+        }
+        return bluetoothWatcher;
     }
 
     private static String outputName(AudioDeviceInfo device) {
