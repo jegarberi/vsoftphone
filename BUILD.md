@@ -115,11 +115,16 @@ ANDROID_SDK_ROOT=~/Android/Sdk ANDROID_NDK_ROOT=~/Android/Sdk/ndk/23.1.7779620 \
   android/build-release.sh
 ```
 
+`ANDROID_ABI=armeabi-v7a` builds for 32-bit phones; each CPU gets its own
+`build-release/<abi>/`.
+
 The recipe F-Droid runs is `android/io.github.jegarberi.vsoftphone.yml`; the
-store text and icon are in `fastlane/metadata/android/`. A release bumps
-`VERSION` and `QT_ANDROID_VERSION_CODE` in `CMakeLists.txt`, adds
-`fastlane/metadata/android/en-US/changelogs/<version code>.txt`, and is tagged
-`v<version>`; F-Droid picks up new tags on its own.
+store text and icon are in `fastlane/metadata/android/`. Each CPU's APK has
+its own version code, `VSOFTPHONE_RELEASE` times ten plus 1 for 32-bit ARM or
+2 for 64-bit ARM. A release bumps `VERSION` and `VSOFTPHONE_RELEASE` in
+`CMakeLists.txt`, adds `fastlane/metadata/android/en-US/changelogs/<code>.txt`
+for both codes, and is tagged `v<version>`; F-Droid picks up new tags on its
+own.
 
 ## A SIP server to try it against
 

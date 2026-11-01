@@ -37,7 +37,7 @@ cd "$WORK"
 # fetch <url> <sha256>: download once, check, unpack next to it
 fetch() {
     file=$(basename "$1")
-    [ -f "$file" ] || curl -fsSL -o "$file.part" "$1"
+    [ -f "$file" ] || curl -fsSL --retry 5 --retry-delay 10 --retry-all-errors -o "$file.part" "$1"
     [ -f "$file" ] || mv "$file.part" "$file"
     echo "$2  $file" | sha256sum -c -
     tar -xf "$file"

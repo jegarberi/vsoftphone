@@ -45,8 +45,10 @@ on Linux, with a cross-compiled Windows build.
 
 ## Licensing
 
-vsoftphone is free software under the GNU General Public License, version 3
-(see [LICENSE](LICENSE)). The libraries it contains or ships keep their own
+vsoftphone is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later
+version (see [LICENSE](LICENSE)). The libraries it contains or ships keep their own
 licences, all compatible with GPL v3:
 
 - PJSIP: GPL v2 or later

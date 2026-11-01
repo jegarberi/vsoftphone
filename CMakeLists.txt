@@ -1,8 +1,9 @@
 cmake_minimum_required(VERSION 3.16)
 
-# A release bumps both: VERSION is the name users see, QT_ANDROID_VERSION_CODE
-# (below) the number Android and F-Droid compare
-project(vsoftphone VERSION 0.1.0 LANGUAGES CXX)
+# A release bumps both: VERSION is the name users see, VSOFTPHONE_RELEASE the
+# number Android and F-Droid compare (see QT_ANDROID_VERSION_CODE below)
+project(vsoftphone VERSION 0.1.1 LANGUAGES CXX)
+set(VSOFTPHONE_RELEASE 2)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -100,13 +101,21 @@ if(ANDROID)
     # Permissions asked for at run time use a private Qt API
     # in Qt 6.4 (QPermission only arrives in 6.5)
     target_link_libraries(vsoftphone PRIVATE Qt6::CorePrivate)
+    # One APK per CPU, each with its own version code: the release times ten
+    # plus the CPU, so a 64-bit phone prefers the arm64 APK. The F-Droid
+    # recipe's VercodeOperation repeats this
+    set(abi_digits armeabi-v7a 1 arm64-v8a 2 x86 3 x86_64 4)
+    list(FIND abi_digits ${ANDROID_ABI} abi_index)
+    math(EXPR abi_index "${abi_index} + 1")
+    list(GET abi_digits ${abi_index} abi_digit)
+    math(EXPR version_code "${VSOFTPHONE_RELEASE} * 10 + ${abi_digit}")
     # The manifest, launcher icon and background service are in android/
     set_target_properties(vsoftphone PROPERTIES
         QT_ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_SOURCE_DIR}/android"
         QT_ANDROID_MIN_SDK_VERSION 23
         QT_ANDROID_TARGET_SDK_VERSION 33
         QT_ANDROID_VERSION_NAME ${PROJECT_VERSION}
-        QT_ANDROID_VERSION_CODE 1)
+        QT_ANDROID_VERSION_CODE ${version_code})
     return() # the loopback test below is a desktop program
 endif()
 
