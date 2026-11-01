@@ -13,7 +13,7 @@ Repo: https://github.com/jegarberi/vsoftphone.git
 Builds:
   - versionName: 0.1.1
     versionCode: 21
-    commit: v0.1.1
+    commit: 74622a575eb05987406767e04706dcde04d88ed7
     timeout: 14400
     sudo:
       - apt-get update
@@ -26,7 +26,7 @@ Builds:
 
   - versionName: 0.1.1
     versionCode: 22
-    commit: v0.1.1
+    commit: 74622a575eb05987406767e04706dcde04d88ed7
     timeout: 14400
     sudo:
       - apt-get update
@@ -42,6 +42,7 @@ UpdateCheckMode: Tags
 VercodeOperation:
   - 10*%c + 1
   - 10*%c + 2
+UpdateCheckName: Ignore
 UpdateCheckData: CMakeLists.txt|set\(VSOFTPHONE_RELEASE\s+(\d+)\)|CMakeLists.txt|project\(vsoftphone
   VERSION ([\d.]+)
 CurrentVersion: 0.1.1
