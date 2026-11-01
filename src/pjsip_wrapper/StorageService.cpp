@@ -24,7 +24,7 @@ StorageService::~StorageService() {
 
 QSqlDatabase StorageService::database() const {
   QString connectionName =
-      QString("microsip_connection_%1")
+      QString("vsoftphone_connection_%1")
           .arg(reinterpret_cast<quintptr>(QThread::currentThreadId()));
   if (QSqlDatabase::contains(connectionName)) {
     return QSqlDatabase::database(connectionName);
@@ -120,7 +120,7 @@ bool StorageService::init() {
     dir.mkpath(".");
   }
 
-  m_dbPath = dir.filePath("microsip.db");
+  m_dbPath = dir.filePath("vsoftphone.db");
 
   const bool ok = createTables();
   // The database holds SIP passwords: keep it readable by the owner only

@@ -289,15 +289,15 @@ int main(int argc, char *argv[]) {
   qputenv("SDL_VIDEODRIVER", "dummy"); // the camera preview opens no window
   QStandardPaths::setTestModeEnabled(true); // keep away from the real profile
   QGuiApplication app(argc, argv);
-  app.setOrganizationName("AntigravityTest");
-  app.setApplicationName("MicrosipCloneTest");
+  app.setOrganizationName("vsoftphoneTest");
+  app.setApplicationName("vsoftphoneTest");
 
   const QString dataDir =
       QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
   CHECK(dataDir.contains("qttest"));
   QDir(dataDir).removeRecursively();
   QSettings().clear();
-  QSettings("Antigravity", "MicrosipClone").clear(); // Theme's file, test copy
+  QSettings("vsoftphone", "vsoftphone").clear(); // Theme's file, test copy
 
   // --- address classification ------------------------------------------------
   CHECK(hasIpHost("10.0.0.5") && hasIpHost("bob@10.0.0.5:5080"));
@@ -306,8 +306,8 @@ int main(int argc, char *argv[]) {
   CHECK(!hasIpHost("1001@pbx.example.com:5060"));
 
   // --- password store round trip, only on request: it uses the real store ---
-  // MICROSIP_TEST_KEYRING=1 build/Release/call_flow_test
-  if (qEnvironmentVariableIsSet("MICROSIP_TEST_KEYRING")) {
+  // VSOFTPHONE_TEST_KEYRING=1 build/Release/call_flow_test
+  if (qEnvironmentVariableIsSet("VSOFTPHONE_TEST_KEYRING")) {
     const QString key = "call_flow_test/selftest";
     bool found = true;
     CHECK(Keyring::available());
@@ -548,7 +548,7 @@ int main(int argc, char *argv[]) {
   // With hold music set, a held call is sent the music instead
   {
     // One second of a 440 Hz tone: 8 kHz, mono, 16-bit
-    const QString wav = QDir::temp().filePath("microsip-hold-test.wav");
+    const QString wav = QDir::temp().filePath("vsoftphone-hold-test.wav");
     QByteArray pcm;
     for (int i = 0; i < 8000; ++i) {
       const qint16 sample = qint16(8000 * std::sin(i * 2 * 3.14159265 * 440 / 8000));
@@ -788,9 +788,9 @@ int main(int argc, char *argv[]) {
       CHECK(cfg.vid_cap_dev != PJMEDIA_VID_DEFAULT_CAPTURE_DEV);
     });
 
-    // MICROSIP_TEST_DEFAULT_CAMERA=1 also previews "System default", which
+    // VSOFTPHONE_TEST_DEFAULT_CAMERA=1 also previews "System default", which
     // switches a real camera on for a moment; off unless asked
-    if (qEnvironmentVariableIsSet("MICROSIP_TEST_DEFAULT_CAMERA")) {
+    if (qEnvironmentVariableIsSet("VSOFTPHONE_TEST_DEFAULT_CAMERA")) {
       hardware.startVideoPreview(0);
       pump(1000);
       std::printf("call_flow_test: default camera preview %s\n",
@@ -846,16 +846,16 @@ int main(int argc, char *argv[]) {
 
   // --- TURN: with direct media impossible, audio flows through the relay ----
   // Needs a TURN server, so it only runs when one is named, e.g. PJSIP's own
-  // pjturn-srv:  MICROSIP_TEST_TURN=127.0.0.1:34780 (user/password 100/100)
-  const QString turnServer = qEnvironmentVariable("MICROSIP_TEST_TURN");
+  // pjturn-srv:  VSOFTPHONE_TEST_TURN=127.0.0.1:34780 (user/password 100/100)
+  const QString turnServer = qEnvironmentVariable("VSOFTPHONE_TEST_TURN");
   if (!turnServer.isEmpty()) {
     // The account names no TURN server, so it takes the global one, and
     // TURN alone must be enough to enable ICE
     account["ice"] = false;
     accounts.updateAccount(0, account);
     sip.setTurnServer(turnServer);
-    sip.setTurnUser(qEnvironmentVariable("MICROSIP_TEST_TURN_USER", "100"));
-    sip.setTurnPassword(qEnvironmentVariable("MICROSIP_TEST_TURN_PASS", "100"));
+    sip.setTurnUser(qEnvironmentVariable("VSOFTPHONE_TEST_TURN_USER", "100"));
+    sip.setTurnPassword(qEnvironmentVariable("VSOFTPHONE_TEST_TURN_PASS", "100"));
     // Relay only: no host candidates are offered, leaving it the only path
     sip.setForceRelay(true);
     sip.setTurnEnabled(true);
@@ -897,10 +897,10 @@ int main(int argc, char *argv[]) {
   {
     qInstallMessageHandler(collectQmlWarnings);
     QQmlApplicationEngine engine;
-    // MICROSIP_TEST_THEME=<name> picks the theme the windows are loaded and
+    // VSOFTPHONE_TEST_THEME=<name> picks the theme the windows are loaded and
     // the screenshots taken in; it also decides the control style
-    if (qEnvironmentVariableIsSet("MICROSIP_TEST_THEME"))
-      Theme::instance().setCurrent(qEnvironmentVariable("MICROSIP_TEST_THEME"));
+    if (qEnvironmentVariableIsSet("VSOFTPHONE_TEST_THEME"))
+      Theme::instance().setCurrent(qEnvironmentVariable("VSOFTPHONE_TEST_THEME"));
     setupQml(engine);
     CHECK(Theme::instance().classic() == !Theme::instance().look().isEmpty());
     for (const char *file :
@@ -981,9 +981,9 @@ int main(int argc, char *argv[]) {
         sip.setAutoAnswer(true);
       }
 
-      // MICROSIP_TEST_SCREENSHOTS=<dir> QT_QUICK_BACKEND=software saves a
+      // VSOFTPHONE_TEST_SCREENSHOTS=<dir> QT_QUICK_BACKEND=software saves a
       // picture of every window, and of each tab of the main one
-      const QString shots = qEnvironmentVariable("MICROSIP_TEST_SCREENSHOTS");
+      const QString shots = qEnvironmentVariable("VSOFTPHONE_TEST_SCREENSHOTS");
       auto *quickWindow = qobject_cast<QQuickWindow *>(window);
       if (!shots.isEmpty() && quickWindow) {
         const QString base = shots + "/" + QString(file).section('.', 0, 0);
@@ -1077,7 +1077,12 @@ int main(int argc, char *argv[]) {
   callService.makeCall("", "sip:" + domain);
   CHECK(refused == 1 && calls.rowCount() == 2);
   // The call is to ourselves, so its far end is a call of ours too
+  // One dialog takes one re-INVITE at a time: the second hold waits for the
+  // first, or PJSIP refuses it on a busy machine
   callService.holdCall(callId(0));
+  CHECK(waitFor([&] {
+    return mediaStatus(callId(0)) == PJSUA_CALL_MEDIA_LOCAL_HOLD;
+  }));
   callService.holdCall(callId(1));
   CHECK(waitFor([&] { return calls.activeCallId() < 0; }));
   callService.makeCall("", "sip:" + domain);
@@ -1111,15 +1116,15 @@ int main(int argc, char *argv[]) {
 
   // --- against a real server, on request -----------------------------------
   // The Asterisk in asterisk/compose.yaml:
-  //   MICROSIP_TEST_ASTERISK=host:5080 MICROSIP_TEST_PASSWORD_1001=...
-  //   MICROSIP_TEST_PASSWORD_1002=... build/Release/call_flow_test
-  const QString server = qEnvironmentVariable("MICROSIP_TEST_ASTERISK");
+  //   VSOFTPHONE_TEST_ASTERISK=host:5080 VSOFTPHONE_TEST_PASSWORD_1001=...
+  //   VSOFTPHONE_TEST_PASSWORD_1002=... build/Release/call_flow_test
+  const QString server = qEnvironmentVariable("VSOFTPHONE_TEST_ASTERISK");
   if (!server.isEmpty()) {
     auto phone = [&](const QString &user) {
       return QVariantMap{
           {"username", user},   {"domain", server},
           {"password", qEnvironmentVariable(
-                           ("MICROSIP_TEST_PASSWORD_" + user).toUtf8())},
+                           ("VSOFTPHONE_TEST_PASSWORD_" + user).toUtf8())},
           {"transport", "UDP"}, {"enableStun", false},
           {"ipVersion", 0},     {"blfUri", "blf-" + user}};
     };

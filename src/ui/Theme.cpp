@@ -28,7 +28,7 @@ static const Theme::Palette kPalettes[] = {
 
 static QSettings settingsFile() {
   // Named explicitly: also read before the application object sets its names
-  return QSettings("Antigravity", "MicrosipClone");
+  return QSettings("vsoftphone", "vsoftphone");
 }
 
 Theme &Theme::instance() {

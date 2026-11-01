@@ -401,7 +401,7 @@ void HardwareService::setCodecEnabled(const QString &codecId, bool enabled) {
 }
 
 #ifdef Q_OS_ANDROID
-static const char *phoneService = "dev/antigravity/microsipclone/PhoneService";
+static const char *phoneService = "io/github/jegarberi/vsoftphone/PhoneService";
 #endif
 
 void HardwareService::setAudioOutput(const QString &name) {

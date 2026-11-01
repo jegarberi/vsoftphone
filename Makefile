@@ -23,11 +23,11 @@ test: build ## Build, then run the loopback call test
 
 .PHONY: run
 run: ## Start the app
-	./run_microsip.sh
+	./run_vsoftphone.sh
 
 .PHONY: docker
 docker: ## Build and test inside Debian bookworm
-	docker build -t microsip-clone .
+	docker build -t vsoftphone .
 
 .PHONY: clean
 clean: ## Remove build/
@@ -154,7 +154,7 @@ macos: ## macOS folder in build-macos/dist; needs MACOS_SDK=/path/to/MacOSX.sdk 
 
 .PHONY: static-check
 static-check: ## Show the newest glibc version the Linux folder needs
-	@for f in build-static/dist/microsip_clone build-static/dist/call_flow_test; do \
+	@for f in build-static/dist/vsoftphone build-static/dist/call_flow_test; do \
 	  printf '%s needs glibc ' "$$(basename $$f)"; \
 	  objdump -T $$f | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1; \
 	done
@@ -163,15 +163,15 @@ static-check: ## Show the newest glibc version the Linux folder needs
 .PHONY: static-test
 static-test: ## Run the call test from the Linux folder inside Ubuntu 22.04 (glibc 2.35)
 	@printf 'FROM ubuntu:22.04\nRUN apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends libasound2 libgl1 libegl1 libopengl0 libfontconfig1 libfreetype6 libxkbcommon0 libdbus-1-3 libglib2.0-0 && rm -rf /var/lib/apt/lists/*\n' \
-	  | docker build -q -t microsip-static-test - >/dev/null
-	docker run --rm -v $(CURDIR)/build-static/dist:/app:ro microsip-static-test \
+	  | docker build -q -t vsoftphone-static-test - >/dev/null
+	docker run --rm -v $(CURDIR)/build-static/dist:/app:ro vsoftphone-static-test \
 	  bash -c 'ldd --version | head -1 && timeout 300 /app/call_flow_test \
-	    && MICROSIP_TEST_THEME="Windows 95" timeout 300 /app/call_flow_test'
+	    && VSOFTPHONE_TEST_THEME="Windows 95" timeout 300 /app/call_flow_test'
 
 .PHONY: windows-test
 windows-test: ## Run the call test from the Windows folder under wine
 	cd build-windows/dist && WINEDEBUG=-all QT_QPA_PLATFORM=offscreen wine call_flow_test.exe
-	cd build-windows/dist && WINEDEBUG=-all QT_QPA_PLATFORM=offscreen MICROSIP_TEST_THEME="Windows 95" wine call_flow_test.exe
+	cd build-windows/dist && WINEDEBUG=-all QT_QPA_PLATFORM=offscreen VSOFTPHONE_TEST_THEME="Windows 95" wine call_flow_test.exe
 
 .PHONY: static-clean
 static-clean: ## Remove build-static/, build-windows/ and build-macos/
@@ -182,7 +182,7 @@ cache-clean: ## Remove build-cache/ (the downloaded sources and Qt kits, about 3
 	rm -rf build-cache
 
 .PHONY: portable
-portable: $(DIST)/microsip_clone$(EXE)
+portable: $(DIST)/vsoftphone$(EXE)
 	@echo "$(PLATFORM) build ready: $(DIST)"
 
 # --- toolchain -------------------------------------------------------------
@@ -285,7 +285,7 @@ $(QT_STAMP): | $(S)/.tools
 
 SOURCES := $(shell find src tests -type f) CMakeLists.txt
 
-$(S)/app/microsip_clone$(EXE): $(SOURCES) $(PJSIP_STAMP) $(QT_STAMP) $(HOST_STAMP)
+$(S)/app/vsoftphone$(EXE): $(SOURCES) $(PJSIP_STAMP) $(QT_STAMP) $(HOST_STAMP)
 	@# CMake caches what pkg-config said about PJSIP; forget it in case PJSIP changed
 	@rm -f $(S)/app/CMakeCache.txt
 	PKG_CONFIG_LIBDIR=$(PJSIP_PREFIX)/lib/pkgconfig cmake -S . -B $(S)/app \
@@ -293,7 +293,7 @@ $(S)/app/microsip_clone$(EXE): $(SOURCES) $(PJSIP_STAMP) $(QT_STAMP) $(HOST_STAM
 	  -DCMAKE_C_COMPILER=$(ZCC) -DCMAKE_CXX_COMPILER=$(ZCXX) \
 	  -DCMAKE_AR=$(S)/bin/zig-ar -DCMAKE_RANLIB=$(S)/bin/zig-ranlib \
 	  -DCMAKE_PREFIX_PATH=$(QT) \
-	  -DMICROSIP_PJSIP_PKGCONFIG=ON \
+	  -DVSOFTPHONE_PJSIP_PKGCONFIG=ON \
 	  -DCMAKE_EXE_LINKER_FLAGS="-L$(PREFIX)/lib $(DEP_LDFLAGS)" \
 	  $(CMAKE_PLATFORM) > $(S)/app.log 2>&1
 	@! grep -q -- '-isystem /usr/include\|-I/usr/include' $(S)/app/CMakeFiles/*/flags.make || \
@@ -301,9 +301,9 @@ $(S)/app/microsip_clone$(EXE): $(SOURCES) $(PJSIP_STAMP) $(QT_STAMP) $(HOST_STAM
 	cmake --build $(S)/app -j$(JOBS) >> $(S)/app.log 2>&1
 
 # The executable plus the Qt runtime it loads, found through qt.conf
-$(DIST)/microsip_clone$(EXE): $(S)/app/microsip_clone$(EXE)
+$(DIST)/vsoftphone$(EXE): $(S)/app/vsoftphone$(EXE)
 	rm -rf $(DIST) && mkdir -p $(DIST)
-	cp $(S)/app/microsip_clone$(EXE) $(S)/app/call_flow_test$(EXE) $(DIST)/
+	cp $(S)/app/vsoftphone$(EXE) $(S)/app/call_flow_test$(EXE) $(DIST)/
 ifeq ($(PLATFORM),linux)
 	mkdir -p $(DIST)/lib && cp -a $(QT)/lib/*.so.* $(DIST)/lib/
 else ifeq ($(PLATFORM),windows)
@@ -322,9 +322,9 @@ ANDROID_ABI ?= arm64-v8a
 comma := ,
 .PHONY: android
 android: ## Build an APK for Android 6.0 and newer into build-android/ (ANDROID_ABI=armeabi-v7a for old 32-bit phones)
-	docker build -f Dockerfile.android $(if $(wildcard build-android/debug.keystore),--secret id=debugkey$(comma)src=build-android/debug.keystore) --build-arg ANDROID_ABI=$(ANDROID_ABI) -t microsip-android-$(ANDROID_ABI) .
+	docker build -f Dockerfile.android $(if $(wildcard build-android/debug.keystore),--secret id=debugkey$(comma)src=build-android/debug.keystore) --build-arg ANDROID_ABI=$(ANDROID_ABI) -t vsoftphone-android-$(ANDROID_ABI) .
 	mkdir -p build-android
-	docker run --rm --user $$(id -u):$$(id -g) -v $(CURDIR)/build-android:/out microsip-android-$(ANDROID_ABI)
+	docker run --rm --user $$(id -u):$$(id -g) -v $(CURDIR)/build-android:/out vsoftphone-android-$(ANDROID_ABI)
 
 ##@ Test server (Asterisk in Docker, Linux)
 
@@ -345,8 +345,8 @@ asterisk-down: ## Stop it
 asterisk-test: ## Run the call test against that Asterisk as well (registration, calls, messages, busy lamps)
 	PASSWORD_1001=test-pass-1001 PASSWORD_1002=test-pass-1002 $(ASTERISK) up -d --build --quiet-pull --force-recreate
 	@sleep 5
-	MICROSIP_TEST_ASTERISK=$$(ip -4 route get 1.1.1.1 | sed -n 's/.* src \([0-9.]*\).*/\1/p'):5080 \
-	MICROSIP_TEST_PASSWORD_1001=test-pass-1001 MICROSIP_TEST_PASSWORD_1002=test-pass-1002 \
+	VSOFTPHONE_TEST_ASTERISK=$$(ip -4 route get 1.1.1.1 | sed -n 's/.* src \([0-9.]*\).*/\1/p'):5080 \
+	VSOFTPHONE_TEST_PASSWORD_1001=test-pass-1001 VSOFTPHONE_TEST_PASSWORD_1002=test-pass-1002 \
 	  build/Release/call_flow_test 2>&1 | grep -a "call_flow_test:"
 	$(ASTERISK) down
 
@@ -369,8 +369,8 @@ turn-down: ## Stop it
 turn-test: ## Run the call test with media forced through that relay
 	TURN_PASSWORD=test-turn-pass $(TURN) up -d --quiet-pull --force-recreate
 	@sleep 3
-	MICROSIP_TEST_TURN=$$(ip -4 route get 1.1.1.1 | sed -n 's/.* src \([0-9.]*\).*/\1/p'):3478 \
-	MICROSIP_TEST_TURN_USER=softphone MICROSIP_TEST_TURN_PASS=test-turn-pass \
+	VSOFTPHONE_TEST_TURN=$$(ip -4 route get 1.1.1.1 | sed -n 's/.* src \([0-9.]*\).*/\1/p'):3478 \
+	VSOFTPHONE_TEST_TURN_USER=softphone VSOFTPHONE_TEST_TURN_PASS=test-turn-pass \
 	  build/Release/call_flow_test 2>&1 | grep -a "call_flow_test:"
 	$(TURN) down
 

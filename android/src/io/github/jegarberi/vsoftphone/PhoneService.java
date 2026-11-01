@@ -1,4 +1,4 @@
-package dev.antigravity.microsipclone;
+package io.github.jegarberi.vsoftphone;
 
 import android.app.Notification;
 import android.app.NotificationChannel;
@@ -173,10 +173,10 @@ public class PhoneService extends Service {
             .build());
 
         cpu = ((PowerManager) getSystemService(POWER_SERVICE))
-            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "microsipclone:calls");
+            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "vsoftphone:calls");
         cpu.acquire();
         wifi = ((WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE))
-            .createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "microsipclone:calls");
+            .createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "vsoftphone:calls");
         wifi.acquire();
     }
 

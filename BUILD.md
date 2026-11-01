@@ -35,13 +35,13 @@ libvpx.
 ## Run
 
 ```bash
-./run_microsip.sh
+./run_vsoftphone.sh
 ```
 
-The binary is `build/Release/microsip_clone`; the wrapper sets up the Conan
+The binary is `build/Release/vsoftphone`; the wrapper sets up the Conan
 runtime environment and makes ALSA use the system configuration.
 
-To see the SIP messages on the console, run with `MICROSIP_SIP_TRACE=1`. It is
+To see the SIP messages on the console, run with `VSOFTPHONE_SIP_TRACE=1`. It is
 off by default because the trace contains `Authorization` headers.
 
 ## Test
@@ -57,8 +57,8 @@ server, network or sound card, and uses a throwaway profile under `~/.qttest`.
 To also check media relaying, start a TURN server and name it:
 
 ```bash
-MICROSIP_TEST_TURN=host:port MICROSIP_TEST_TURN_USER=user \
-MICROSIP_TEST_TURN_PASS=pass build/Release/call_flow_test
+VSOFTPHONE_TEST_TURN=host:port VSOFTPHONE_TEST_TURN_USER=user \
+VSOFTPHONE_TEST_TURN_PASS=pass build/Release/call_flow_test
 ```
 
 ## Android
@@ -75,7 +75,7 @@ Qt 6.4 supports, and 6.4 is the oldest Qt this app builds with. The first
 build downloads several gigabytes and accepts the Android SDK licence.
 
 The APK is signed with Android's debug key, so it installs for testing
-(`adb install -r build-android/microsip-clone-arm64-v8a.apk`); sign a release
+(`adb install -r build-android/vsoftphone-arm64-v8a.apk`); sign a release
 with your own key. The first build leaves that key in
 `build-android/debug.keystore` and later builds reuse it, so they install over
 the old one and keep its accounts.
@@ -96,9 +96,30 @@ has video. What is different on Android, all in `android/`:
 - **Video** uses the phone's cameras and its own H.264, VP8 and VP9 codecs,
   the hardware ones where the phone has them.
 - **Sound** in a call can be switched between the earpiece, the loudspeaker
-  and a connected headset, from the call screen.
-- **The log goes to logcat**: `adb logcat -s MicrosipClone`, as detailed as
+  and a connected headset, from the call screen. A Bluetooth headset is used
+  as soon as it connects (Android 12 and newer), and music and videos in
+  other apps pause for the length of a call.
+- **The log goes to logcat**: `adb logcat -s vsoftphone`, as detailed as
   Settings → Log says.
+
+### F-Droid
+
+F-Droid builds the app itself and accepts nothing prebuilt, Qt included.
+`android/build-release.sh` is that build: `android/build-deps.sh` compiles
+Qt (qtbase, qtshadertools and qtdeclarative), OpenSSL, Opus and PJSIP from checksummed
+source archives, then the app is packaged as an unsigned release APK. It needs
+the Android SDK and NDK 23.1.7779620:
+
+```bash
+ANDROID_SDK_ROOT=~/Android/Sdk ANDROID_NDK_ROOT=~/Android/Sdk/ndk/23.1.7779620 \
+  android/build-release.sh
+```
+
+The recipe F-Droid runs is `android/io.github.jegarberi.vsoftphone.yml`; the
+store text and icon are in `fastlane/metadata/android/`. A release bumps
+`VERSION` and `QT_ANDROID_VERSION_CODE` in `CMakeLists.txt`, adds
+`fastlane/metadata/android/en-US/changelogs/<version code>.txt`, and is tagged
+`v<version>`; F-Droid picks up new tags on its own.
 
 ## A SIP server to try it against
 
@@ -143,11 +164,11 @@ address itself (most cloud servers), start it with
 The test can save a picture of every window and of each tab:
 
 ```bash
-MICROSIP_TEST_SCREENSHOTS=/tmp/shots QT_QUICK_BACKEND=software \
-  MICROSIP_TEST_THEME="Solarized Light" build/Release/call_flow_test
+VSOFTPHONE_TEST_SCREENSHOTS=/tmp/shots QT_QUICK_BACKEND=software \
+  VSOFTPHONE_TEST_THEME="Solarized Light" build/Release/call_flow_test
 ```
 
-`MICROSIP_TEST_THEME` is optional and names one of the themes in Settings.
+`VSOFTPHONE_TEST_THEME` is optional and names one of the themes in Settings.
 
 ## Makefile
 
@@ -183,7 +204,7 @@ Per platform:
   needs the ALSA, OpenGL and xkbcommon development headers; only those are
   exposed to the compiler, so the system's own glibc headers never get in.
 - **Windows**: uses Qt's `llvm-mingw` kit, which is built with the same C++
-  runtime zig uses. Run `dist\microsip_clone.exe`.
+  runtime zig uses. Run `dist\vsoftphone.exe`.
 - **macOS**: zig does not include Apple's frameworks, so this needs a
   `MacOSX.sdk` from a Mac with Xcode. `MACOS_ARCH` (`aarch64` or `x86_64`)
   and `MACOS_MIN` select the target. **This target has not been run**: there
@@ -201,7 +222,7 @@ the matching `*_SHA256` too. `make static-clean` removes the build folders;
 ## Docker
 
 ```bash
-docker build -t microsip-clone .
+docker build -t vsoftphone .
 ```
 
 Builds the Linux binary and runs the test inside Debian bookworm.

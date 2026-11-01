@@ -43,9 +43,9 @@ int main(int argc, char *argv[]) {
 
   QGuiApplication app(argc, argv);
 
-  app.setOrganizationName("Antigravity");
-  app.setOrganizationDomain("antigravity.dev");
-  app.setApplicationName("MicrosipClone");
+  app.setOrganizationName("vsoftphone");
+  app.setOrganizationDomain("jegarberi.github.io");
+  app.setApplicationName("vsoftphone");
   app.setWindowIcon(QIcon(":/ui/icon.png"));
   // The main window decides: it quits, or hides in the tray (see main.qml)
   app.setQuitOnLastWindowClosed(false);
@@ -56,7 +56,7 @@ int main(int argc, char *argv[]) {
   QDir().mkpath(dataDir);
   // Held until the process ends, however it ends, so it can never go stale
 #ifdef Q_OS_WIN
-  ::CreateMutexW(nullptr, TRUE, L"Local\\AntigravityMicrosipClone");
+  ::CreateMutexW(nullptr, TRUE, L"Local\\vsoftphone");
   const bool alreadyRunning = ::GetLastError() == ERROR_ALREADY_EXISTS;
 #else
   const int lockFd =
@@ -68,7 +68,7 @@ int main(int argc, char *argv[]) {
   // The running copy listens here so that a second launch brings it forward
 #ifdef Q_OS_WIN
   const QString activation =
-      "antigravity-microsipclone-" + qEnvironmentVariable("USERNAME");
+      "vsoftphone-" + qEnvironmentVariable("USERNAME");
 #else
   const QString activation = dataDir + "/activate.sock";
 #endif
@@ -95,7 +95,7 @@ int main(int argc, char *argv[]) {
       .waitForFinished();
   // Keeps the app registered while it is not on screen, and announces the
   // calls that arrive then (android/.../PhoneService.java)
-  const char *phoneService = "dev/antigravity/microsipclone/PhoneService";
+  const char *phoneService = "io/github/jegarberi/vsoftphone/PhoneService";
   const QJniObject context(QNativeInterface::QAndroidApplication::context());
   // PJSIP's camera classes (android/src/org/pjsip) ask for this themselves
   QJniObject::callStaticMethod<void>(

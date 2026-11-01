@@ -5,7 +5,7 @@ set -e
 random_password() { tr -dc 'a-z0-9' < /dev/urandom | head -c 16; }
 USER_NAME="${TURN_USER:-softphone}"
 PASSWORD="${TURN_PASSWORD:-$(random_password)}"
-REALM="${TURN_REALM:-microsip}"
+REALM="${TURN_REALM:-vsoftphone}"
 # With host networking this is the machine's own address
 ADDRESS="$(hostname -I 2>/dev/null | cut -d' ' -f1)"
 ADDRESS="${ADDRESS:-127.0.0.1}"

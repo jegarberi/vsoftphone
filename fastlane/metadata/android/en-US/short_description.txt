@@ -1,0 +1,1 @@
+SIP softphone: calls, video, chat and presence, with TLS, SRTP, ICE and TURN

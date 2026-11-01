@@ -5,12 +5,12 @@
 #include <QStandardPaths>
 
 // Tests must never touch, or wait on, the user's real password store, unless
-// they ask to with MICROSIP_TEST_KEYRING (the store's own round-trip check).
+// they ask to with VSOFTPHONE_TEST_KEYRING (the store's own round-trip check).
 static bool allowed() {
-  if (qEnvironmentVariableIsSet("MICROSIP_NO_KEYRING"))
+  if (qEnvironmentVariableIsSet("VSOFTPHONE_NO_KEYRING"))
     return false;
   return !QStandardPaths::isTestModeEnabled() ||
-         qEnvironmentVariableIsSet("MICROSIP_TEST_KEYRING");
+         qEnvironmentVariableIsSet("VSOFTPHONE_TEST_KEYRING");
 }
 
 #if defined(Q_OS_LINUX)
@@ -75,7 +75,7 @@ const LibSecret &libsecret() {
 }
 
 const Schema *schema() {
-  static const Schema s = {"dev.antigravity.MicrosipClone", 0, {{"key", 0}},
+  static const Schema s = {"io.github.jegarberi.vsoftphone", 0, {{"key", 0}},
                            0, {}};
   return &s;
 }
@@ -96,7 +96,7 @@ bool Keyring::store(const QString &key, const QString &secret) {
     return false;
   GError *error = nullptr;
   const int ok = libsecret().store(
-      schema(), "default", "MicrosipClone SIP password",
+      schema(), "default", "vsoftphone SIP password",
       secret.toUtf8().constData(), nullptr, &error, "key",
       key.toUtf8().constData(), nullptr);
   return !failed(error, "store") && ok;
@@ -132,7 +132,7 @@ void Keyring::clear(const QString &key) {
 #include <wincred.h>
 
 static std::wstring target(const QString &key) {
-  return ("MicrosipClone:" + key).toStdWString();
+  return ("vsoftphone:" + key).toStdWString();
 }
 
 bool Keyring::available() { return allowed(); }
@@ -142,7 +142,7 @@ bool Keyring::store(const QString &key, const QString &secret) {
     return false;
   std::wstring name = target(key);
   QByteArray blob = secret.toUtf8();
-  wchar_t user[] = L"MicrosipClone";
+  wchar_t user[] = L"vsoftphone";
   CREDENTIALW credential = {};
   credential.Type = CRED_TYPE_GENERIC;
   credential.TargetName = name.data();

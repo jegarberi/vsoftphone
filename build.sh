@@ -19,4 +19,4 @@ cmake --build --preset conan-release -j$(nproc)
 ln -sf build/Release/compile_commands.json .
 
 echo "=== Build Complete ==="
-echo "Run using: ./run_microsip.sh"
+echo "Run using: ./run_vsoftphone.sh"

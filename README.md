@@ -1,4 +1,4 @@
-# Microsip Clone
+# vsoftphone
 
 A SIP softphone built with C++17, Qt 6 / QML and PJSIP. Developed and tested
 on Linux, with a cross-compiled Windows build.
@@ -41,17 +41,18 @@ on Linux, with a cross-compiled Windows build.
   stand-in for a BroadWorks server, not against BroadWorks itself
 - Windows is cross-compiled and tested under wine only; the macOS build
   target exists but has never been built
-- No in-call file transfer; no Android or iOS builds
+- No in-call file transfer; no iOS build
 
 ## Licensing
 
-This repository has no licence file yet; choosing one is up to the owner.
-Whatever is chosen has to fit the libraries the binaries contain or ship:
+vsoftphone is free software under the GNU General Public License, version 3
+(see [LICENSE](LICENSE)). The libraries it contains or ships keep their own
+licences, all compatible with GPL v3:
 
-- PJSIP: GPL v2 or later (or a commercial licence from Teluu). A binary that
-  links it can only be handed to others under GPL-compatible terms
+- PJSIP: GPL v2 or later
 - Qt: LGPL v3 (shipped as separate shared libraries in the portable folders)
 - OpenSSL: Apache 2.0; Opus: BSD
+- famfamfam Silk icons: CC BY 2.5
 
 ## Building
 

@@ -1,4 +1,4 @@
-module microsip.ui
+module vsoftphone.ui
 Avatar 1.0 components/Avatar.qml
 PillButton 1.0 components/PillButton.qml
 Bevel 1.0 components/Bevel.qml

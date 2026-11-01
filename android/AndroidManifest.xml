@@ -4,7 +4,7 @@
      foreground service that keeps the app registered while it is not on
      screen. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="dev.antigravity.microsipclone"
+    package="io.github.jegarberi.vsoftphone"
     android:installLocation="auto"
     android:versionCode="-- %%INSERT_VERSION_CODE%% --"
     android:versionName="-- %%INSERT_VERSION_NAME%% --">

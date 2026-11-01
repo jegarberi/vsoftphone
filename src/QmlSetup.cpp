@@ -40,9 +40,9 @@ void setupQml(QQmlEngine &engine) {
     QGuiApplication::setFont(font);
   }
 
-  qmlRegisterType<HistoryModel>("MicrosipClone", 1, 0, "HistoryModel");
-  qmlRegisterType<MessageModel>("MicrosipClone", 1, 0, "MessageModel");
-  qmlRegisterType<VideoView>("MicrosipClone", 1, 0, "VideoView");
+  qmlRegisterType<HistoryModel>("vsoftphone", 1, 0, "HistoryModel");
+  qmlRegisterType<MessageModel>("vsoftphone", 1, 0, "MessageModel");
+  qmlRegisterType<VideoView>("vsoftphone", 1, 0, "VideoView");
   VideoSink::instance(); // both follow the calls from now on
   VideoSink::self();
 

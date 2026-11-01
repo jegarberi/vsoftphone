@@ -12,4 +12,4 @@ unset ALSA_CONFIG_DIR
 unset ALSA_CONFIG_PATH
 
 # Run the application
-./build/Release/microsip_clone
+./build/Release/vsoftphone

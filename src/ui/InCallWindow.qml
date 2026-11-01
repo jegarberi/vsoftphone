@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material as M
 import QtQuick.Layouts
-import MicrosipClone 1.0
+import vsoftphone 1.0
 
 ApplicationWindow {
     id: inCallWindow

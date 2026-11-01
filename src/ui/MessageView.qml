@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import MicrosipClone 1.0
+import vsoftphone 1.0
 
 Item {
     id: root

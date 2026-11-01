@@ -11,7 +11,7 @@ ApplicationWindow {
     minimumWidth: 320
     minimumHeight: 480
     visible: true
-    title: qsTr("Microsip")
+    title: qsTr("vsoftphone")
     color: Theme.background
 
     M.Material.theme: Theme.dark ? M.Material.Dark : M.Material.Light

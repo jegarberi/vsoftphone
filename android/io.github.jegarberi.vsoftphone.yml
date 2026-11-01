@@ -1,0 +1,31 @@
+Categories:
+  - Voice & Video Chat
+License: GPL-3.0-only
+AuthorName: Juan Garberi
+SourceCode: https://github.com/jegarberi/vsoftphone
+IssueTracker: https://github.com/jegarberi/vsoftphone/issues
+
+AutoName: vsoftphone
+
+RepoType: git
+Repo: https://github.com/jegarberi/vsoftphone.git
+
+Builds:
+  - versionName: 0.1.0
+    versionCode: 1
+    commit: v0.1.0
+    timeout: 14400
+    sudo:
+      - apt-get update
+      - apt-get install -y build-essential cmake ninja-build pkg-config perl python3
+        autoconf automake libtool xz-utils
+    output: build-release/app/android-build/build/outputs/apk/release/android-build-release-unsigned.apk
+    build: ANDROID_SDK_ROOT=$$SDK$$ ANDROID_NDK_ROOT=$$NDK$$ android/build-release.sh
+    ndk: 23.1.7779620
+
+AutoUpdateMode: Version
+UpdateCheckMode: Tags
+UpdateCheckData: CMakeLists.txt|QT_ANDROID_VERSION_CODE\s+(\d+)|CMakeLists.txt|project\(vsoftphone
+  VERSION ([\d.]+)
+CurrentVersion: 0.1.0
+CurrentVersionCode: 1

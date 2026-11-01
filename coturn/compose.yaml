@@ -17,7 +17,7 @@ services:
       TURN_USER: "${TURN_USER:-softphone}"
       # Random on every start unless given here
       TURN_PASSWORD: "${TURN_PASSWORD:-}"
-      TURN_REALM: "${TURN_REALM:-microsip}"
+      TURN_REALM: "${TURN_REALM:-vsoftphone}"
       # The public address, when this machine itself is behind NAT
       EXTERNAL_IP: "${EXTERNAL_IP:-}"
     stop_grace_period: 3s

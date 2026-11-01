@@ -1,0 +1,28 @@
+vsoftphone is a SIP softphone for making and taking calls through any SIP provider or PBX (Asterisk, FreePBX, BroadWorks and others), or directly to an IP address without a server.
+
+<b>Calls</b>
+<ul>
+<li>Answer, hold and resume, mute, DTMF, blind transfer and conference</li>
+<li>Video calls with H.264, VP8 and VP9, using the phone's hardware codecs</li>
+<li>Choose the earpiece, loudspeaker, headset or a Bluetooth headset; a Bluetooth headset is used automatically when connected</li>
+<li>Music and videos in other apps pause during a call</li>
+<li>Call recording, Do Not Disturb and auto answer</li>
+</ul>
+
+<b>Accounts and networks</b>
+<ul>
+<li>Several SIP accounts over UDP, TCP or TLS, with the server certificate verified</li>
+<li>SRTP media encryption</li>
+<li>NAT traversal with STUN, ICE and a TURN relay</li>
+<li>A second outbound proxy that takes over when the first fails</li>
+<li>Registers again when the network comes back, and stays ready for calls in the background</li>
+</ul>
+
+<b>Messages and contacts</b>
+<ul>
+<li>Instant messages with typing indication</li>
+<li>Contacts with groups and presence, and busy lamp fields</li>
+<li>Call history with missed calls</li>
+</ul>
+
+The app keeps a notification while it runs, so Android does not stop it and incoming calls still arrive.

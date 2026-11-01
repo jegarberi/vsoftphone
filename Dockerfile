@@ -1,4 +1,4 @@
-# Builds and tests the Linux binary:  docker build -t microsip-clone .
+# Builds and tests the Linux binary:  docker build -t vsoftphone .
 FROM debian:bookworm
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -23,4 +23,4 @@ RUN python3 -m venv .venv \
 # Loopback call test; needs no network or sound card
 RUN ctest --preset conan-release --output-on-failure
 
-CMD ["./run_microsip.sh"]
+CMD ["./run_vsoftphone.sh"]

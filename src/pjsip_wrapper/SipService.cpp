@@ -318,7 +318,7 @@ void SipService::setTlsVerify(bool enabled) {
 }
 
 QString SipService::userAgent() const {
-  return QSettings().value("sip/userAgent", "MicroSIP/3.21.3").toString();
+  return QSettings().value("sip/userAgent", "vsoftphone").toString();
 }
 
 void SipService::setUserAgent(const QString &agent) {
@@ -389,10 +389,10 @@ void SipService::init() {
     EpConfig ep_cfg;
     // PJSIP's levels for the four choices in Settings. The last one also
     // prints every SIP message, Authorization headers included, which is why
-    // it is not the default. MICROSIP_SIP_TRACE=1 forces it.
+    // it is not the default. VSOFTPHONE_SIP_TRACE=1 forces it.
     static const int levels[] = {1, 3, 4, 5};
     const int verbosity =
-        qEnvironmentVariableIsSet("MICROSIP_SIP_TRACE") ? 3 : logLevel();
+        qEnvironmentVariableIsSet("VSOFTPHONE_SIP_TRACE") ? 3 : logLevel();
     ep_cfg.logConfig.level = levels[verbosity];
     ep_cfg.logConfig.consoleLevel = levels[verbosity];
     ep_cfg.logConfig.msgLogging = verbosity == 3;
@@ -412,7 +412,7 @@ void SipService::init() {
     // Force X-nat header in SDP (always enabled as requested)
     ep_cfg.uaConfig.natTypeInSdp = 1;
 
-    // Mimic MicroSIP User Agent to ensure compatibility with strict PBX rules
+    // User-Agent header, changeable in Settings for PBXs that filter on it
     ep_cfg.uaConfig.userAgent = userAgent().toStdString();
 
     // Disable automatic switching from UDP to TCP

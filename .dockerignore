@@ -13,3 +13,4 @@ build-cache
 build-windows
 build-macos
 build-android
+build-release

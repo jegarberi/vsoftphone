@@ -1,4 +1,4 @@
-create a microsip clone using QT6 and QML, using pjsip
+create a SIP softphone using QT6 and QML, using pjsip
 it must support
     several accounts
     several audio codecs
